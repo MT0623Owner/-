@@ -545,3 +545,27 @@ test('word reveals require no confirmation and do not make the game screen inert
   await expect(page.locator('#skip-effect')).toHaveText('閉じる');
   await expect(page.locator('#presentation-event')).not.toBeVisible({ timeout: 3500 });
 });
+
+for (const host of [false, true]) test(`thinking panel survives a delayed vote snapshot and restoration, host=${host}`, async ({ page }) => {
+  await openRoom(page, { host, input: true });
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.evaluate(() => {
+    const C = window.CWWCore, vote = structuredClone(window.testRoom);
+    C.startVote(vote);
+    for (const id of ['host', 'p1', 'p2']) C.castVote(vote, id, C.SKIP_VOTE);
+    C.resolveVotes(vote);
+    const thinking = structuredClone(vote);
+    C.forcePresentation(thinking, 'host', thinking.presentation.id);
+    window.pushRoom(thinking);
+    window.pushRoom(vote); // delayed notification replaces the thinking DOM
+    window.pushRoom(thinking); // resync returns the very same round/deadline
+  });
+  const prefix = host ? 'host' : 'player';
+  await expect(page.locator('#presentation-event')).not.toBeVisible();
+  await expect(page.locator(`#${prefix}-complete-thinking`)).toBeEnabled();
+  await expect(page.locator(host ? '#host-participant-panel .thinking-progress' : '#player-phase-panel .thinking-progress')).toHaveText('思考完了 0 / 3人');
+  await page.locator(`#${prefix}-complete-thinking`).click();
+  await expect(page.locator(`#${prefix}-complete-thinking`)).toBeDisabled();
+  expect(errors).toEqual([]);
+});
