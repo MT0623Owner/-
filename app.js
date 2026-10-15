@@ -10,6 +10,7 @@
   let syncingRoom = false;
   let wakeLock = null;
   let wakeLockRequesting = false;
+  let subscriptionGeneration = 0;
 
   const SESSION_KEY = "cww.lastSession.v1";
   const GEMINI_API_KEY = "cww.geminiApiKey.session";
@@ -49,6 +50,7 @@
     $("#join-room-button").addEventListener("click", joinRoom);
     $("#resume-room-button").addEventListener("click", resumeSavedSession);
     $("#forget-room-button").addEventListener("click", forgetSavedSession);
+    $("#copy-room-link").addEventListener("click", copyRoomLink);
     document.body.addEventListener("click", event => {
       const action = event.target.closest("[data-action]")?.dataset.action;
       if (action === "leave") leaveRoom();
@@ -89,8 +91,17 @@
     }
   }
 
+  function storageValue(storage, method, key, value) {
+    try {
+      return window[storage][method](key, value);
+    } catch (_) {
+      // Storage can be disabled by the browser; playing must remain possible.
+      return null;
+    }
+  }
+
   function saveSession(session) {
-    localStorage.setItem(SESSION_KEY, JSON.stringify({
+    storageValue("localStorage", "setItem", SESSION_KEY, JSON.stringify({
       mode: session.mode,
       roomCode: session.roomCode,
       name: session.name || "",
@@ -100,7 +111,7 @@
   }
 
   function clearSavedSession() {
-    localStorage.removeItem(SESSION_KEY);
+    storageValue("localStorage", "removeItem", SESSION_KEY);
     renderSavedSession();
   }
 
@@ -132,22 +143,22 @@
     await run(async () => {
       await Room.ready();
       const hostId = Room.userId;
-      const code = await generateRoomCode();
-      const initial = Core.createRoom(code, hostId);
-      await Room.createRoom(initial);
-      saveSession({ mode: "host", roomCode: code, name: "マスター" });
-      enterHostScreen(code);
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const code = generateRoomCode();
+        if (!await Room.createRoom(Core.createRoom(code, hostId))) continue;
+        saveSession({ mode: "host", roomCode: code, name: "マスター" });
+        enterHostScreen(code);
+        return;
+      }
+      throw new Error("部屋コードの作成に失敗しました。もう一度試してください。");
     });
   }
 
-  async function generateRoomCode() {
+  function generateRoomCode() {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    for (let attempt = 0; attempt < 12; attempt++) {
-      let code = "";
-      for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
-      if (!await Room.getRoom(code)) return code;
-    }
-    throw new Error("部屋コードの作成に失敗しました。もう一度試してください。");
+    let code = "";
+    for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
+    return code;
   }
 
   async function joinRoom() {
@@ -195,6 +206,7 @@
     roomCode = code;
     subscribe(code);
     history.replaceState(null, "", `?room=${code}`);
+    renderRoomInvite(code);
     showScreen("screen-host");
     updateWakeLock();
   }
@@ -210,7 +222,9 @@
 
   function subscribe(code) {
     if (unsubscribe) unsubscribe();
+    const generation = ++subscriptionGeneration;
     unsubscribe = Room.subscribe(code, next => {
+      if (generation !== subscriptionGeneration) return;
       if (!next) {
         showToast("部屋が見つからなくなりました。");
         clearSavedSession();
@@ -221,13 +235,17 @@
       renderRoom();
       updateWakeLock();
     }, error => {
+      if (generation !== subscriptionGeneration) return;
       showToast(error.message);
       unsubscribe = null;
-      setTimeout(recoverRoomConnection, 1200);
+      setTimeout(() => {
+        if (generation === subscriptionGeneration) recoverRoomConnection();
+      }, 1200);
     });
   }
 
   function leaveRoom(clearUrl = true) {
+    subscriptionGeneration++;
     if (unsubscribe) unsubscribe();
     unsubscribe = null;
     mode = "";
@@ -243,9 +261,12 @@
   async function recoverRoomConnection() {
     if (!Room?.configured || !mode || !roomCode || document.visibilityState === "hidden" || syncingRoom) return;
     syncingRoom = true;
+    const code = roomCode;
+    const generation = subscriptionGeneration;
     try {
       await Room.ready();
-      const latest = await Room.getRoom(roomCode);
+      const latest = await Room.getRoom(code);
+      if (generation !== subscriptionGeneration || code !== roomCode || !mode) return;
       if (!latest) {
         showToast("部屋が見つからなくなりました。");
         clearSavedSession();
@@ -259,7 +280,7 @@
       subscribe(roomCode);
       updateWakeLock();
     } catch (error) {
-      showToast(`接続の復帰に失敗しました。通信状態を確認してください。${error.message ? ` (${error.message})` : ""}`);
+      if (generation === subscriptionGeneration) showToast(`接続の復帰に失敗しました。通信状態を確認してください。${error.message ? ` (${error.message})` : ""}`);
     } finally {
       syncingRoom = false;
     }
@@ -305,15 +326,17 @@
     if (!room) return;
     if (mode === "host") renderHost();
     if (mode === "player") renderPlayer();
+    renderBusyState();
     updateWakeLock();
   }
 
   function renderHost() {
     $("#host-room-code").textContent = room.roomCode;
+    const resetSetup = !hostDraftSettings;
     if (room.phase === Core.PHASES.LOBBY && !hostDraftSettings) {
       hostDraftSettings = Core.normalizeSettings(room.settings);
     }
-    renderHostSetup();
+    renderHostSetup(resetSetup);
     renderHostPlayers();
     renderHostParticipant();
     renderHostPhase();
@@ -344,13 +367,14 @@
     }).join("") || `<span class="muted">まだ参加者がいません。</span>`;
   }
 
-  function renderHostSetup() {
+  function renderHostSetup(force = false) {
     const panel = $("#host-setup-panel");
     if (room.phase !== Core.PHASES.LOBBY) {
       panel.classList.add("hidden");
       return;
     }
     panel.classList.remove("hidden");
+    if (!force && panel.querySelector("#host-wolves")) return;
     const settings = hostDraftSettings || Core.normalizeSettings(room.settings);
     panel.innerHTML = `
       <h2>ゲーム設定</h2>
@@ -439,11 +463,12 @@
       </div>
     `;
     panel.querySelectorAll("input, select").forEach(input => input.addEventListener("input", collectHostDraft));
-    const savedGeminiKey = sessionStorage.getItem(GEMINI_API_KEY) || "";
+    const savedGeminiKey = storageValue("sessionStorage", "getItem", GEMINI_API_KEY) || "";
     if ($("#host-gemini-api-key") && savedGeminiKey) $("#host-gemini-api-key").value = savedGeminiKey;
     $("#host-participates").addEventListener("change", () => {
       collectHostDraft();
-      renderHostSetup();
+      renderHostSetup(true);
+      renderHostPlayers();
     });
     $("#host-topic-mode").addEventListener("change", () => {
       const next = collectHostDraft();
@@ -451,15 +476,15 @@
         next.topic = "";
         hostDraftSettings = next;
       }
-      renderHostSetup();
+      renderHostSetup(true);
     });
     $("#host-gemini-api-key")?.addEventListener("input", () => {
-      sessionStorage.setItem(GEMINI_API_KEY, $("#host-gemini-api-key").value.trim());
+      storageValue("sessionStorage", "setItem", GEMINI_API_KEY, $("#host-gemini-api-key").value.trim());
     });
     $("#host-template").addEventListener("click", () => {
       const item = Core.TEMPLATES[Math.floor(Math.random() * Core.TEMPLATES.length)];
       hostDraftSettings = Core.normalizeSettings({ ...collectHostDraft(false), ...item });
-      renderHostSetup();
+      renderHostSetup(true);
     });
     $("#host-start").addEventListener("click", hostStartGame);
   }
@@ -510,7 +535,7 @@
 
   async function resolveTopicSettings(settings) {
     if (settings.topicMode !== "external") return { settings, notice: "" };
-    const apiKey = ($("#host-gemini-api-key")?.value || sessionStorage.getItem(GEMINI_API_KEY) || "").trim();
+    const apiKey = ($("#host-gemini-api-key")?.value || storageValue("sessionStorage", "getItem", GEMINI_API_KEY) || "").trim();
     if (!apiKey) throw new Error("外部AI生成にはGemini APIキーを入力してください。");
 
     try {
@@ -904,6 +929,9 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
       const submitted = room.submissions?.[me.id];
       const inputId = `${prefix}-hidden-word`;
       const buttonId = `${prefix}-submit-word`;
+      const inputRound = `${roomCode}:${room.week}`;
+      if (!submitted && panel.dataset.inputRound === inputRound && panel.querySelector(`#${inputId}`)) return;
+      panel.dataset.inputRound = inputRound;
       panel.innerHTML = `
         <h2>${room.week}週目: 伏せ入力</h2>
         ${submitted ? `<p class="success-text">送信済み: ${escapeHtml(submitted.word)}</p><p class="muted">全員の入力完了、またはマスターの進行を待っています。</p>` : `
@@ -1050,13 +1078,28 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
   async function run(task) {
     if (busy) return;
     busy = true;
+    renderBusyState();
     try {
       await task();
     } catch (error) {
       showToast(error.message || String(error));
     } finally {
       busy = false;
+      renderBusyState();
     }
+  }
+
+  function renderBusyState() {
+    document.querySelector(".app-shell").setAttribute("aria-busy", String(busy));
+    document.querySelectorAll("button").forEach(button => {
+      if (busy && !button.disabled) {
+        button.dataset.busyDisabled = "true";
+        button.disabled = true;
+      } else if (!busy && button.dataset.busyDisabled) {
+        button.disabled = false;
+        delete button.dataset.busyDisabled;
+      }
+    });
   }
 
   function renderPlayers(selector, revealRoles) {
@@ -1116,6 +1159,33 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
     hideToast();
     document.querySelectorAll(".screen").forEach(screen => screen.classList.toggle("is-active", screen.id === id));
     window.scrollTo({ top: 0, behavior: "instant" });
+  }
+
+  function renderRoomInvite(code) {
+    const url = new URL(location.pathname, location.origin);
+    url.searchParams.set("room", code);
+    $("#room-invite-url").value = url.href;
+    const container = $("#room-qr");
+    try {
+      const qr = window.qrcode(0, "M");
+      qr.addData(url.href);
+      qr.make();
+      container.innerHTML = qr.createImgTag(6, 24, "この部屋に参加するQRコード");
+    } catch (_) {
+      container.textContent = "QRコードを表示できません。参加URLか部屋コードを共有してください。";
+    }
+  }
+
+  async function copyRoomLink() {
+    const field = $("#room-invite-url");
+    try {
+      await navigator.clipboard.writeText(field.value);
+      showToast("参加URLをコピーしました。");
+    } catch (_) {
+      field.focus();
+      field.select();
+      showToast("参加URLを選択しました。長押しまたはコピー操作で共有してください。");
+    }
   }
 
   function showToast(message) {

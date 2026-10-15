@@ -282,12 +282,12 @@
 
   function normalizeSettings(input) {
     const settings = { ...defaultSettings(), ...(input || {}) };
-    settings.wolfCount = clamp(Number(settings.wolfCount) || 1, 1, 6);
+    settings.wolfCount = Math.floor(clamp(Number(settings.wolfCount) || 1, 1, 6));
     settings.useSeer = Boolean(settings.useSeer);
     settings.inputSeconds = clamp(Number(settings.inputSeconds) || 30, 10, 180);
     settings.discussionSeconds = clamp(Number(settings.discussionSeconds) || 0, 0, 600);
-    settings.maxWeeks = clamp(Number(settings.maxWeeks) || 3, 1, 10);
-    settings.topicLevel = clamp(Number(settings.topicLevel) || 1, 1, 3);
+    settings.maxWeeks = Math.floor(clamp(Number(settings.maxWeeks) || 3, 1, 10));
+    settings.topicLevel = Math.floor(clamp(Number(settings.topicLevel) || 1, 1, 3));
     settings.hostParticipates = input?.hostParticipates !== false;
     settings.hostName = String(settings.hostName || "マスター").trim() || "マスター";
     settings.topicMode = ["manual", "local", "external"].includes(input?.topicMode)
@@ -539,7 +539,11 @@
     state.revealIndex += 1;
 
     if (state.revealIndex >= state.revealOrder.length) {
-      state.phase = suspectPlayers(state).length ? PHASES.SUSPECT_TALK : PHASES.DISCUSSION;
+      if (suspectPlayers(state).length) {
+        state.phase = PHASES.SUSPECT_TALK;
+      } else {
+        return startDiscussion(state, now);
+      }
     }
     state.updatedAt = now;
     return state;

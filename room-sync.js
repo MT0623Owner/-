@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 const config = window.CWW_FIREBASE_CONFIG;
 const appId = window.CWW_APP_ID || "constrained-word-wolf";
@@ -50,8 +50,13 @@ if (!config || !config.apiKey || !config.projectId) {
 
   async function createRoom(roomState) {
     await ready();
-    await setDoc(roomRef(roomState.roomCode), roomState);
-    return roomState.roomCode;
+    return runTransaction(db, async transaction => {
+      const ref = roomRef(roomState.roomCode);
+      const snap = await transaction.get(ref);
+      if (snap.exists()) return false;
+      transaction.set(ref, roomState);
+      return true;
+    });
   }
 
   async function getRoom(roomCode) {
@@ -67,8 +72,9 @@ if (!config || !config.apiKey || !config.projectId) {
       const snap = await transaction.get(ref);
       if (!snap.exists()) throw new Error("部屋が見つかりません。");
       const state = snap.data();
-      const next = await mutator(JSON.parse(JSON.stringify(state)));
-      transaction.set(ref, next);
+      const original = JSON.stringify(state);
+      const next = await mutator(JSON.parse(original));
+      if (JSON.stringify(next) !== original) transaction.set(ref, next);
       return next;
     });
   }
