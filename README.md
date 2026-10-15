@@ -9,6 +9,10 @@
 - GitHub: https://github.com/MT0623Owner/-
 - サイトを開くQRコード: [site-qr.svg](assets/site-qr.svg)
 
+[![制約ワードウルフの公開サイトを開くQRコード](assets/site-qr.svg)](https://mt0623owner.github.io/-/)
+
+スマホのカメラで上のQRコードを読み取ると、公開サイトを開けます。画像のクリックでも開けます。
+
 マスターが部屋を作ると、部屋専用のQRコードと参加URLが表示されます。
 参加者はスマホのカメラで読み取るかURLを開き、名前を入力して参加します。
 QRコードは端末内で生成し、外部のQR生成サービスは使いません。
