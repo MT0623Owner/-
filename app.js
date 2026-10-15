@@ -395,7 +395,7 @@
         </label>
       </div>
       <label class="check-row">
-        <span><strong>占い師を入れる</strong><small>4人以上のとき、村人陣営から1人が2週目に占い師として明らかになります。</small></span>
+        <span><strong>占い師を入れる</strong><small>4人以上のとき、2週目に村人陣営の1人だけが自分の役職とヒントを知ります。終了まで名乗り・ヒントの公開は禁止。推理への利用は自由です。</small></span>
         <input id="host-use-seer" type="checkbox" ${settings.useSeer ? "checked" : ""}>
       </label>
       <label class="check-row">
@@ -880,7 +880,8 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
       <p class="card-label">役職</p>
       <strong class="card-role ${roleClass(privateCard.role)}">${escapeHtml(privateCard.role)}</strong>
       <div class="card-info"><strong>${escapeHtml(privateCard.label)}</strong><br>${escapeHtml(privateCard.value)}</div>
-      ${privateCard.role === Core.ROLES.SEER ? `<p class="card-note">占い師であることを話せるのは投票会議からです。</p>` : ""}
+      ${room.settings.useSeer ? `<p class="card-note">全員共通：ゲーム終了まで、占い師の名乗り・偽名乗りは禁止です。占い師はヒントを言い換えて教えることもできませんが、自分の気づきとして推理を話せます。</p>` : ""}
+      ${privateCard.role === Core.ROLES.SEER ? `<p class="card-note">この役職とヒントは自分だけの秘密です。ヒントをワード選びや投票に使い、話し合いでは公開ワードを根拠に推理を伝えてください。容疑者になっても、このルールは同じです。</p>` : ""}
     `;
   }
 
@@ -894,7 +895,7 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
       return;
     }
     if (room.phase === Core.PHASES.LOBBY) {
-      panel.innerHTML = `<h2>待機中</h2><p class="muted">マスターがゲームを開始するまで待ってください。</p>`;
+      panel.innerHTML = `<h2>待機中</h2><p class="muted">マスターがゲームを開始するまで待ってください。</p>${room.settings.useSeer ? `<p class="muted">占い師あり：4人以上で有効です。2週目に本人だけが役職とヒントを知ります。全員、終了まで占い師の名乗り・偽名乗りは禁止。ヒントの公開や言い換えて教えることも禁止ですが、自分の気づきとして推理を話せます。</p>` : ""}`;
       return;
     }
     if (room.phase === Core.PHASES.ROLE_CHECK) {

@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>制約ワードウルフ</title>
   <meta name="description" content="スマホでQRコードや参加URLを開いて遊べる、制約ワードウルフ。3人以上で部屋を作り、お題・制約・投票で人狼を探そう。">
-  <link rel="stylesheet" href="./styles.css?v=1.3.0">
+  <link rel="stylesheet" href="./styles.css?v=1.3.1">
   <script src="./vendor/qrcode.js?v=2.0.4" defer></script>
-  <script src="./game-core.js?v=1.3.0" defer></script>
+  <script src="./game-core.js?v=1.3.1" defer></script>
   <script src="./firebase-config.js" defer></script>
-  <script type="module" src="./room-sync.js?v=1.3.0"></script>
-  <script src="./app.js?v=1.3.0" defer></script>
+  <script type="module" src="./room-sync.js?v=1.3.1"></script>
+  <script src="./app.js?v=1.3.1" defer></script>
 </head>
 <body>
   <main class="app-shell">
@@ -20,7 +20,7 @@
       <div class="hero">
         <div class="eyebrow-row">
           <p class="eyebrow">Master + Room Code</p>
-          <span class="version-label">バージョン 1.3.0</span>
+          <span class="version-label">バージョン 1.3.1</span>
         </div>
         <h1>制約ワードウルフ</h1>
         <p>マスター端末で部屋を作り、参加者はスマホでQRコードを読み取るか、参加URLを開いて参加します。部屋コードからも入室できます。</p>
@@ -62,6 +62,8 @@
           <li>容疑者はログ入力できませんが、生存者の開示後に声だけで介入できます。</li>
           <li>1週目の通常投票だけ「投票しない」を選べます。</li>
           <li>通常投票で人狼を当てれば村人勝利。外した村人は容疑者になります。</li>
+          <li>占い師ありでは、4人以上のとき2週目に本人だけが役職とヒントを知ります。</li>
+          <li>ゲーム終了まで占い師の名乗り・偽名乗りは禁止です。ヒントの公開や言い換えて教えることも禁止ですが、自分の気づきとして推理を話せます。</li>
         </ul>
       </div>
     </section>
