@@ -1,9 +1,9 @@
 {
   "name": "constrained-word-wolf",
-  "version": "1.4.2",
+  "version": "1.5.0",
   "private": true,
   "scripts": {
-    "test": "node tests/core.test.js && node --test tests/regressions.test.js tests/room-sync.test.js",
+    "test": "node tests/core.test.js && node --test tests/regressions.test.js tests/room-sync.test.js tests/presentation-gate.test.js",
     "test:browser": "playwright test",
     "check": "node --check app.js && node --check presentation.js && node --check game-core.js && node --check room-sync.js"
   },

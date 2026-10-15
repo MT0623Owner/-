@@ -12,6 +12,7 @@
   const PHASES = {
     LOBBY: "lobby",
     ROLE_CHECK: "roleCheck",
+    PRESENTATION: "presentation",
     THINK: "think",
     INPUT: "input",
     REVEAL: "reveal",
@@ -329,7 +330,7 @@
 
   function createRoom(roomCode, hostId) {
     return {
-      version: 6,
+      version: 7,
       roomCode,
       hostId,
       phase: PHASES.LOBBY,
@@ -349,6 +350,8 @@
       logs: [],
       votes: {},
       voteHistory: [],
+      presentation: null,
+      presentationSequence: 0,
       winner: "",
       reason: "",
       updatedAt: Date.now()
@@ -386,6 +389,7 @@
   }
 
   function assignRoles(state, random = Math.random) {
+    requirePresentationComplete(state);
     if (state.settings?.topicMode === "local" || (state.settings?.autoTopic && !state.settings?.topicMode)) {
       state.settings = normalizeSettings({ ...state.settings, ...generateTopicSet(random, state.settings.topicLevel, state.settings.topic) });
     }
@@ -419,6 +423,7 @@
   }
 
   function startRoleCheck(state, now = Date.now()) {
+    requirePresentationComplete(state);
     state.phase = PHASES.ROLE_CHECK;
     state.roleReady = {};
     state.thinkReady = {};
@@ -447,6 +452,7 @@
   }
 
   function startWeek(state, now = Date.now()) {
+    requirePresentationComplete(state);
     if (state.phase === PHASES.ROLE_CHECK && !allRolesConfirmed(state)) throw new Error("全員の役職確認が終わっていません。");
     state.week += 1;
     revealSeerIfNeeded(state);
@@ -489,6 +495,7 @@
   }
 
   function automaticAction(state, now = Date.now(), host = false) {
+    if (state.presentation) return "";
     if (state.phase === PHASES.THINK && (allThinkingComplete(state) || (state.thinkEndsAt && now >= state.thinkEndsAt))) return "input";
     if (state.phase === PHASES.INPUT && allLivingSubmitted(state)) return "reveal";
     if (!host) return "";
@@ -515,10 +522,11 @@
   }
 
   function resetGame(state, now = Date.now()) {
+    requirePresentationComplete(state);
     const empty = createRoom(state.roomCode, state.hostId);
     const settings = normalizeSettings(state.settings);
     if (settings.autoTopic) { settings.topic = ""; settings.constraint = ""; settings.hint = ""; }
-    Object.assign(state, empty, { settings, players: state.players, updatedAt: now });
+    Object.assign(state, empty, { settings, players: state.players, presentationSequence: state.presentationSequence || 0, updatedAt: now });
     Object.values(state.players).forEach(player => { player.role = ""; player.suspect = false; });
     return state;
   }
@@ -594,18 +602,13 @@
     });
     state.revealIndex += 1;
 
-    if (state.revealIndex >= state.revealOrder.length) {
-      if (suspectPlayers(state).length) {
-        state.phase = PHASES.SUSPECT_TALK;
-      } else {
-        return startDiscussion(state, now);
-      }
-    }
-    state.updatedAt = now;
-    return state;
+    const next = state.revealIndex < state.revealOrder.length ? "reveal"
+      : suspectPlayers(state).length ? "suspectTalk" : "discussion";
+    return beginPresentation(state, "word", { type: next }, now, { logId: state.logs.at(-1).id });
   }
 
   function startDiscussion(state, now = Date.now()) {
+    requirePresentationComplete(state);
     state.phase = PHASES.DISCUSSION;
     state.discussionEndsAt = state.settings.discussionSeconds
       ? now + state.settings.discussionSeconds * 1000
@@ -616,6 +619,7 @@
   }
 
   function startVote(state, final = false, now = Date.now()) {
+    requirePresentationComplete(state);
     if (final) {
       const suspects = suspectPlayers(state);
       if (!suspects.length) return finishGame(state, "wolf", "解答権を持つ容疑者がいないため、人狼陣営の勝ちです。", now);
@@ -690,22 +694,67 @@
       }))
     });
 
+    let next;
     if (final) {
-      if (!tied && target.role === ROLES.WOLF) return finishGame(state, "villager", "最終告発で人狼を告発できました。", now);
-      return finishGame(state, "wolf", tied ? "最終告発で意見が割れました。" : "最終告発で人狼以外を告発しました。", now);
+      next = !tied && target.role === ROLES.WOLF
+        ? { type: "result", winner: "villager", reason: "最終告発で人狼を告発できました。" }
+        : { type: "result", winner: "wolf", reason: tied ? "最終告発で意見が割れました。" : "最終告発で人狼以外を告発しました。" };
+    } else if (!tied && !skipped && target.role === ROLES.WOLF) {
+      next = { type: "result", winner: "villager", reason: `${target.name}さんが人狼でした。` };
+    } else {
+      if (!tied && !skipped) target.suspect = true;
+      next = { type: shouldForceFinal(state) ? "finalVote" : "nextWeek" };
     }
+    return beginPresentation(state, "vote", next, now, { voteIndex: state.voteHistory.length - 1 });
+  }
 
-    if (skipped) {
-      if (shouldForceFinal(state)) return startVote(state, true, now);
-      return startWeek(state, now);
-    }
-    if (!tied && target.role === ROLES.WOLF) {
-      return finishGame(state, "villager", `${target.name}さんが人狼でした。`, now);
-    }
-    if (!tied) target.suspect = true;
+  function requirePresentationComplete(state) {
+    if (state.presentation) throw new Error("全員の演出確認を待ってください。");
+  }
 
-    if (shouldForceFinal(state)) return startVote(state, true, now);
-    return startWeek(state, now);
+  function beginPresentation(state, kind, next, now, detail) {
+    state.presentationSequence = (state.presentationSequence || 0) + 1;
+    state.presentation = {
+      id: `${state.roomCode}-${state.presentationSequence}`,
+      kind, next, ...detail,
+      required: [...new Set([state.hostId, ...activeRoster(state.players).map(player => player.id)])],
+      ready: {}
+    };
+    state.phase = PHASES.PRESENTATION;
+    state.thinkEndsAt = null;
+    state.inputEndsAt = null;
+    state.discussionEndsAt = null;
+    state.updatedAt = now;
+    return state;
+  }
+
+  function confirmPresentation(state, playerId, eventId, now = Date.now()) {
+    const event = state.presentation;
+    if (!event || state.phase !== PHASES.PRESENTATION || event.id !== eventId) return state;
+    if (!event.required.includes(playerId)) throw new Error("この演出の参加者だけが確認できます。");
+    if (event.ready[playerId]) return state;
+    event.ready[playerId] = true;
+    state.updatedAt = now;
+    if (event.required.every(id => event.ready[id])) return resumePresentation(state, now);
+    return state;
+  }
+
+  function forcePresentation(state, actorId, eventId, now = Date.now()) {
+    if (actorId !== state.hostId) throw new Error("マスターだけが確認待ちを解除できます。");
+    if (!state.presentation || state.presentation.id !== eventId) return state;
+    return resumePresentation(state, now);
+  }
+
+  function resumePresentation(state, now) {
+    const next = state.presentation.next;
+    state.presentation = null;
+    if (next.type === "nextWeek") return startWeek(state, now);
+    if (next.type === "discussion") return startDiscussion(state, now);
+    if (next.type === "finalVote") return startVote(state, true, now);
+    if (next.type === "result") return finishGame(state, next.winner, next.reason, now);
+    state.phase = next.type === "suspectTalk" ? PHASES.SUSPECT_TALK : PHASES.REVEAL;
+    state.updatedAt = now;
+    return state;
   }
 
   function shouldForceFinal(state) {
@@ -841,6 +890,8 @@
     castVote,
     allVotesSubmitted,
     resolveVotes,
+    confirmPresentation,
+    forcePresentation,
     shouldForceFinal,
     privateCard,
     generateTopicSet,

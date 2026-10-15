@@ -179,15 +179,15 @@ function startInputWeek(state, now = 1000) {
   Core.submitHiddenWord(state, "p2", "キリン", 1002);
   Core.submitHiddenWord(state, "p3", "ゾウ", 1003);
   Core.startReveal(state, 1004);
-  Core.revealCurrentWord(state, "p1", 1005);
-  Core.revealCurrentWord(state, "p2", 1006);
-  Core.revealCurrentWord(state, "p3", 1007);
+  revealCurrentWordAndConfirm(state, "p1", 1005);
+  revealCurrentWordAndConfirm(state, "p2", 1006);
+  revealCurrentWordAndConfirm(state, "p3", 1007);
   Core.startDiscussion(state, 1008);
   Core.startVote(state, false, 1009);
   Core.castVote(state, "p1", Core.SKIP_VOTE, 1010);
   Core.castVote(state, "p2", Core.SKIP_VOTE, 1011);
   Core.castVote(state, "p3", Core.SKIP_VOTE, 1012);
-  Core.resolveVotes(state, 1013);
+  resolveVotesAndConfirm(state, 1013);
   assert.equal(state.voteHistory[0].result, "スキップ");
   assert.equal(Core.activeRoster(state.players).some(player => player.suspect), false);
   assert.equal(state.phase, Core.PHASES.THINK);
@@ -211,15 +211,15 @@ function startInputWeek(state, now = 1000) {
   Core.submitHiddenWord(state, "p3", "ゾウ", 1003);
   assert.equal(Object.keys(state.submissions).length, 3);
   Core.startReveal(state, 1004);
-  Core.revealCurrentWord(state, "p1", 1005);
-  Core.revealCurrentWord(state, "p2", 1006);
-  Core.revealCurrentWord(state, "p3", 1007);
+  revealCurrentWordAndConfirm(state, "p1", 1005);
+  revealCurrentWordAndConfirm(state, "p2", 1006);
+  revealCurrentWordAndConfirm(state, "p3", 1007);
   Core.startDiscussion(state, 1008);
   Core.startVote(state, false, 1009);
   Core.castVote(state, "p1", "p2", 1010);
   Core.castVote(state, "p2", "p1", 1011);
   Core.castVote(state, "p3", "p1", 1012);
-  Core.resolveVotes(state, 1013);
+  resolveVotesAndConfirm(state, 1013);
   assert.equal(state.phase, Core.PHASES.RESULT);
   assert.equal(state.winner, "villager");
 }
@@ -232,15 +232,15 @@ function startInputWeek(state, now = 1000) {
   Core.submitHiddenWord(state, "p2", "キリン", 1002);
   Core.submitHiddenWord(state, "p3", "ゾウ", 1003);
   Core.startReveal(state, 1004);
-  Core.revealCurrentWord(state, "p1", 1005);
-  Core.revealCurrentWord(state, "p2", 1006);
-  Core.revealCurrentWord(state, "p3", 1007);
+  revealCurrentWordAndConfirm(state, "p1", 1005);
+  revealCurrentWordAndConfirm(state, "p2", 1006);
+  revealCurrentWordAndConfirm(state, "p3", 1007);
   Core.startDiscussion(state, 1008);
   Core.startVote(state, false, 1009);
   Core.castVote(state, "p1", "p2", 1010);
   Core.castVote(state, "p2", "p3", 1011);
   Core.castVote(state, "p3", "p2", 1012);
-  Core.resolveVotes(state, 1013);
+  resolveVotesAndConfirm(state, 1013);
   assert.equal(state.players.p2.suspect, true);
   assert.equal(state.phase, Core.PHASES.FINAL_VOTE);
   assert.throws(() => Core.submitHiddenWord(state, "p2", "チーター", 1014), /伏せ入力の時間ではありません|容疑者/);
@@ -255,17 +255,17 @@ function startInputWeek(state, now = 1000) {
   Core.submitHiddenWord(state, "p3", "ゾウ", 1003);
   Core.submitHiddenWord(state, "p4", "カバ", 1004);
   Core.startReveal(state, 1005);
-  Core.revealCurrentWord(state, "p1", 1006);
-  Core.revealCurrentWord(state, "p2", 1007);
-  Core.revealCurrentWord(state, "p3", 1008);
-  Core.revealCurrentWord(state, "p4", 1009);
+  revealCurrentWordAndConfirm(state, "p1", 1006);
+  revealCurrentWordAndConfirm(state, "p2", 1007);
+  revealCurrentWordAndConfirm(state, "p3", 1008);
+  revealCurrentWordAndConfirm(state, "p4", 1009);
   Core.startDiscussion(state, 1010);
   Core.startVote(state, false, 1011);
   Core.castVote(state, "p1", "p2", 1012);
   Core.castVote(state, "p2", "p3", 1013);
   Core.castVote(state, "p3", "p2", 1014);
   Core.castVote(state, "p4", "p2", 1015);
-  Core.resolveVotes(state, 1016);
+  resolveVotesAndConfirm(state, 1016);
   assert.equal(state.phase, Core.PHASES.THINK);
   Core.startInput(state, 1017);
   assert.throws(() => Core.submitHiddenWord(state, "p1", "ライオン", 1017), /過去週/);
@@ -278,9 +278,21 @@ function startInputWeek(state, now = 1000) {
   state.players.p2.suspect = true;
   Core.startVote(state, true, 1000);
   Core.castVote(state, "p2", "p1", 1001);
-  Core.resolveVotes(state, 1002);
+  resolveVotesAndConfirm(state, 1002);
   assert.equal(state.phase, Core.PHASES.RESULT);
   assert.equal(state.winner, "villager");
 }
 
 console.log("core tests ok");
+
+function revealCurrentWordAndConfirm(state, ...args) {
+  Core.revealCurrentWord(state, ...args);
+  const gate = state.presentation;
+  for (const id of gate?.required || []) Core.confirmPresentation(state, id, gate.id, args.at(-1));
+}
+
+function resolveVotesAndConfirm(state, ...args) {
+  Core.resolveVotes(state, ...args);
+  const gate = state.presentation;
+  for (const id of gate?.required || []) Core.confirmPresentation(state, id, gate.id, args.at(-1));
+}

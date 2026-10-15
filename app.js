@@ -33,7 +33,7 @@
   async function init() {
     Room = await waitForRoomApi();
     bindStaticEvents();
-    window.CWWPresentation.init();
+    window.CWWPresentation.init({ confirm: id => mutate(state => Core.confirmPresentation(state, Room.userId, id)), force: id => mutate(state => Core.forcePresentation(state, Room.userId, id)) });
     bindLifecycleEvents();
     renderConfigState();
     setInterval(tick, 500);
@@ -59,6 +59,8 @@
     $("#close-rules").addEventListener("click", () => { window.CWWPresentation.complete(); $("#rules-dialog").close(); });
     document.body.addEventListener("click", event => {
       const action = event.target.closest("[data-action]")?.dataset.action;
+      if (action === "invite") $("#invite-dialog").showModal();
+      if (action === "close-invite") $("#invite-dialog").close();
       if (action === "leave") leaveRoom();
       if (action === "sync") recoverRoomConnection();
       if (action === "reload") location.reload();
@@ -266,6 +268,7 @@
   }
 
   function leaveRoom(clearUrl = true) {
+    $("#invite-dialog").close();
     window.CWWPresentation.reset();
     $("#rules-dialog").close();
     lastHelpRole = "";
@@ -366,6 +369,8 @@
 
   function renderRoom() {
     if (!room) return;
+    const count = Core.activeRoster(room.players).filter(p => p.id !== room.hostId).length + Number(hostDraftSettings?.hostParticipates ?? room.settings.hostParticipates);
+    if (count >= 3 && $("#toast").textContent.includes("3人以上")) hideToast();
     const shell = $(".app-shell");
     const phaseChanged = shell.dataset.phase !== room.phase;
     if (phaseChanged) {
@@ -377,7 +382,7 @@
     shell.dataset.compare = String([Core.PHASES.SUSPECT_TALK, Core.PHASES.DISCUSSION, Core.PHASES.VOTE, Core.PHASES.FINAL_VOTE].includes(room.phase));
     if (mode === "host") renderHost();
     if (mode === "player") renderPlayer();
-    updateRulesHelp();
+    if (!room.presentation) updateRulesHelp();
     window.CWWPresentation.update(presentationView());
     renderBusyState();
     updateWakeLock();
@@ -400,6 +405,7 @@
     const me = room.players[Room.userId];
     return {
       code: roomCode, host: mode === "host", phase: room.phase, week: room.week,
+      presentation: room.presentation ? { id: room.presentation.id, kind: room.presentation.kind, logId: room.presentation.logId, voteIndex: room.presentation.voteIndex, selfReady: Boolean(room.presentation.ready[Room.userId]), eligible: room.presentation.required.includes(Room.userId), total: room.presentation.required.length, waiting: room.presentation.required.filter(id => !room.presentation.ready[id]).map(id => room.players[id]?.name || "マスター") } : null,
       maxWeeks: room.settings.maxWeeks,
       me: { role: me?.role || "", suspect: Boolean(me?.suspect) },
       suspects: Core.suspectPlayers(room).map(player => player.id),
@@ -872,6 +878,7 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
 
   function renderHostPhase() {
     const panel = $("#host-phase-panel");
+    if (room.presentation) { panel.innerHTML = `<h2>演出の確認待ち</h2><p>全員の確認後に進みます。タイマーは停止中です。</p>`; return; }
     const living = Core.livingPlayers(room);
     const suspects = Core.suspectPlayers(room);
     const hostPlaying = room.players[Room.userId]?.active !== false && Boolean(room.players[Room.userId]);
@@ -1014,6 +1021,7 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
   }
 
   function renderParticipantPhase(panel, me, prefix) {
+    if (room.presentation) { panel.innerHTML = `<h2>演出の確認待ち</h2><p>全員の確認後に進みます。</p>`; return; }
     const phaseKey = `${roomCode}:${room.phase}:${room.week}`;
     if (panel.dataset.phaseKey !== phaseKey) {
       delete panel.dataset.markup;
@@ -1227,17 +1235,26 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
 
   async function run(task) {
     if (busy) return;
+    hideToast();
+    $("#effect-network").textContent = "送信中…";
     busy = true;
     renderBusyState();
     // A delayed write may already be committed: keep duplicate actions blocked
     // and offer a fresh page instead of timing out and resending the mutation.
-    const slowOperation = setTimeout(() => $("#connection-notice").classList.remove("hidden"), CONNECTION_WAIT_MS);
+    const slowOperation = setTimeout(() => {
+      $("#connection-notice").classList.remove("hidden");
+      $("#effect-network").textContent = "通信の確認に時間がかかっています。再読み込み後、前回の部屋から再入室できます。";
+      $("#effect-reload").classList.remove("hidden");
+    }, CONNECTION_WAIT_MS);
     try {
       await task();
+      $("#effect-network").textContent = "";
     } catch (error) {
       showToast(error.message || String(error));
+      $("#effect-network").textContent = error.message || String(error);
     } finally {
       clearTimeout(slowOperation);
+      $("#effect-reload").classList.add("hidden");
       $("#connection-notice").classList.add("hidden");
       busy = false;
       renderBusyState();

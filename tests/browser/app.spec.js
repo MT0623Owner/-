@@ -58,8 +58,30 @@ test('joining player preserves the host setup DOM and current text', async ({ pa
   await expect(page.locator('#host-player-list')).toContainText('追加の人');
 });
 
+test('an old minimum-player warning clears when the roster becomes sufficient', async ({ page }) => {
+  await openRoom(page, { host: true });
+  await page.evaluate(() => {
+    const state = structuredClone(window.testRoom);
+    delete state.players.p2;
+    window.pushRoom(state);
+  });
+  await page.locator('#host-topic').fill('動物');
+  await page.locator('#host-constraint').fill('赤い');
+  await page.locator('#host-start').click();
+  await expect(page.locator('#toast')).toContainText('3人以上');
+  await expect(page.locator('#toast')).toHaveClass(/show/);
+  await page.evaluate(() => {
+    const state = structuredClone(window.testRoom);
+    window.CWWCore.addOrUpdatePlayer(state, 'p2', '追加の人');
+    window.pushRoom(state);
+  });
+  await expect(page.locator('#toast')).not.toHaveClass(/show/);
+  await expect(page.locator('#host-topic')).toHaveValue('動物');
+});
+
 test('room QR decodes to the invitation URL and opens with the code filled in', async ({ page, context }) => {
   await openRoom(page, { host: true });
+  await page.locator('[data-action=invite]').click();
   const url = 'http://127.0.0.1:4173/?room=TEST';
   await expect(page.locator('#room-invite-url')).toHaveValue(url);
   const image = page.locator('#room-qr img');
@@ -408,4 +430,36 @@ test('local automatic topics start with seer and expose only the participants ow
   expect(state.seerId).not.toBe('');
   expect(state.players[state.seerId].role).toBe('村人');
   if (state.players.host.role !== '人狼') await expect(page.locator('#host-player-card')).not.toContainText(state.settings.constraint);
+});
+
+for (const host of [false, true]) test(`shared effect waits for acknowledgement, host=${host}`, async ({ page }) => {
+  await openRoom(page, { host, input: true });
+  await page.evaluate(() => {
+    const C = window.CWWCore, s = structuredClone(window.testRoom);
+    for (const id of ['host', 'p1', 'p2']) C.submitHiddenWord(s, id, id);
+    C.startReveal(s);
+    C.revealCurrentWord(s, s.revealOrder[0]);
+    window.pushRoom(s);
+  });
+  await expect(page.locator('#presentation-event')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.evaluate(() => window.CWWPresentation.complete());
+  await page.waitForTimeout(5500);
+  expect(await page.evaluate(() => window.testRoom.phase)).toBe('presentation');
+  await page.locator('#skip-effect').click();
+  await expect(page.locator('#skip-effect')).toBeDisabled();
+  await expect(page.locator('#presentation-event')).toBeVisible();
+  expect(await page.evaluate(() => window.testRoom.phase)).toBe('presentation');
+  await page.evaluate(() => { window.CWWPresentation.reset(); window.pushRoom(structuredClone(window.testRoom)); });
+  await expect(page.locator('#presentation-event')).toBeVisible();
+  await expect(page.locator('#skip-effect')).toBeDisabled();
+  if (host) await page.locator('#force-effect').click();
+  else await page.evaluate(() => {
+    const s = structuredClone(window.testRoom), gate = s.presentation;
+    for (const id of gate.required) window.CWWCore.confirmPresentation(s, id, gate.id);
+    window.pushRoom(s);
+  });
+  await expect(page.locator('#presentation-event')).not.toBeVisible();
+  expect(await page.evaluate(() => window.testRoom.phase)).toBe('reveal');
 });
