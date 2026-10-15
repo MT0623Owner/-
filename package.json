@@ -1,11 +1,11 @@
 {
   "name": "constrained-word-wolf",
-  "version": "1.5.2",
+  "version": "1.6.0",
   "private": true,
   "scripts": {
-    "test": "node tests/core.test.js && node --test tests/regressions.test.js tests/room-sync.test.js tests/presentation-gate.test.js",
+    "test": "node tests/core.test.js && node --test tests/regressions.test.js tests/room-sync.test.js tests/presentation-gate.test.js tests/ai-topics.test.js",
     "test:browser": "playwright test",
-    "check": "node --check app.js && node --check presentation.js && node --check game-core.js && node --check room-sync.js"
+    "check": "node --check ai-topics.js && node --check app.js && node --check presentation.js && node --check game-core.js && node --check room-sync.js"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",
