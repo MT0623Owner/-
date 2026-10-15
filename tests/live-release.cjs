@@ -133,7 +133,7 @@ const output = process.env.CWW_CAPTURE_DIR || 'test-results/live-release';
     snapshot = await state();
     const seerPage = byId.get(snapshot.seerId);
     await expect(seerPage.locator('#rules-title')).toHaveClass(/seer-awakening-title/);
-    await expect(seerPage.locator(`#${prefix(seerPage)}-card`)).toContainText(snapshot.settings.hint);
+    await expect(seerPage.locator(seerPage === host ? '#host-player-card' : '#player-card')).toContainText(snapshot.settings.hint);
     for (const page of pages.filter(p => p !== seerPage)) await expect(page.locator('#rules-dialog')).not.toBeVisible();
     await seerPage.screenshot({ path: path.join(output, 'seer-awakening.png'), fullPage: true });
     console.log('PASS: seer awakens privately at week 2');
