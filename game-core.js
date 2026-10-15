@@ -329,7 +329,7 @@
 
   function createRoom(roomCode, hostId) {
     return {
-      version: 5,
+      version: 6,
       roomCode,
       hostId,
       phase: PHASES.LOBBY,
@@ -340,6 +340,7 @@
       inputEndsAt: null,
       discussionEndsAt: null,
       roleReady: {},
+      thinkReady: {},
       seerId: "",
       seerRevealed: false,
       submissions: {},
@@ -368,7 +369,8 @@
   }
 
   function activeRoster(playersMap) {
-    return Object.values(playersMap || {}).filter(player => player && player.active !== false);
+    return Object.values(playersMap || {}).filter(player => player && player.active !== false)
+      .sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0) || a.id.localeCompare(b.id));
   }
 
   function livingPlayers(state) {
@@ -419,6 +421,7 @@
   function startRoleCheck(state, now = Date.now()) {
     state.phase = PHASES.ROLE_CHECK;
     state.roleReady = {};
+    state.thinkReady = {};
     state.submissions = {};
     state.revealOrder = [];
     state.revealIndex = 0;
@@ -449,6 +452,7 @@
     revealSeerIfNeeded(state);
     state.phase = PHASES.THINK;
     state.thinkEndsAt = now + state.settings.inputSeconds * 1000;
+    state.thinkReady = {};
     state.inputEndsAt = null;
     state.discussionEndsAt = null;
     state.submissions = {};
@@ -464,6 +468,58 @@
     state.phase = PHASES.INPUT;
     state.inputEndsAt = null;
     state.updatedAt = now;
+    return state;
+  }
+
+  function allThinkingComplete(state) {
+    const players = livingPlayers(state);
+    return players.length > 0 && players.every(player => state.thinkReady?.[player.id]);
+  }
+
+  function completeThinking(state, playerId, week, deadline, now = Date.now()) {
+    // A delayed tap from an earlier round must not complete a later round.
+    if (state.phase !== PHASES.THINK || state.week !== week || state.thinkEndsAt !== deadline) return state;
+    if (!livingPlayers(state).some(player => player.id === playerId)) throw new Error("今回ワードを入力する参加者だけが思考完了できます。");
+    state.thinkReady ||= {};
+    if (state.thinkReady[playerId]) return state;
+    state.thinkReady[playerId] = true;
+    state.updatedAt = now;
+    if (allThinkingComplete(state)) return startInput(state, now);
+    return state;
+  }
+
+  function automaticAction(state, now = Date.now(), host = false) {
+    if (state.phase === PHASES.THINK && (allThinkingComplete(state) || (state.thinkEndsAt && now >= state.thinkEndsAt))) return "input";
+    if (state.phase === PHASES.INPUT && allLivingSubmitted(state)) return "reveal";
+    if (!host) return "";
+    if ([PHASES.VOTE, PHASES.FINAL_VOTE].includes(state.phase) && allVotesSubmitted(state)) return "resolve";
+    if (state.phase === PHASES.DISCUSSION && state.discussionEndsAt && now >= state.discussionEndsAt) return "vote";
+    return "";
+  }
+
+  function advanceAutomatically(state, expectedPhase, expectedWeek, now = Date.now(), host = false) {
+    if (state.phase !== expectedPhase || state.week !== expectedWeek) return state;
+    // Recheck the live transaction snapshot, including deadlines and completeness.
+    const action = automaticAction(state, now, host);
+    if (action === "input") return startInput(state, now);
+    if (action === "reveal") return startReveal(state, now);
+    if (action === "resolve") return resolveVotes(state, now);
+    if (action === "vote") return startVote(state, false, now);
+    return state;
+  }
+
+  function startFinalAccusation(state, now = Date.now()) {
+    if (state.phase !== PHASES.DISCUSSION) throw new Error("話し合いの後に最終告発へ進めます。");
+    if (!suspectPlayers(state).length) throw new Error("容疑者がいません。通常投票へ進んでください。");
+    return startVote(state, true, now);
+  }
+
+  function resetGame(state, now = Date.now()) {
+    const empty = createRoom(state.roomCode, state.hostId);
+    const settings = normalizeSettings(state.settings);
+    if (settings.autoTopic) { settings.topic = ""; settings.constraint = ""; settings.hint = ""; }
+    Object.assign(state, empty, { settings, players: state.players, updatedAt: now });
+    Object.values(state.players).forEach(player => { player.role = ""; player.suspect = false; });
     return state;
   }
 
@@ -635,8 +691,8 @@
     });
 
     if (final) {
-      if (!tied && target.role === ROLES.WOLF) return finishGame(state, "villager", "最終解決で人狼を告発できました。", now);
-      return finishGame(state, "wolf", tied ? "最終解決で意見が割れました。" : "最終解決で人狼以外を告発しました。", now);
+      if (!tied && target.role === ROLES.WOLF) return finishGame(state, "villager", "最終告発で人狼を告発できました。", now);
+      return finishGame(state, "wolf", tied ? "最終告発で意見が割れました。" : "最終告発で人狼以外を告発しました。", now);
     }
 
     if (skipped) {
@@ -766,6 +822,12 @@
     allRolesConfirmed,
     startWeek,
     startInput,
+    allThinkingComplete,
+    completeThinking,
+    automaticAction,
+    advanceAutomatically,
+    startFinalAccusation,
+    resetGame,
     submitHiddenWord,
     allLivingSubmitted,
     startReveal,

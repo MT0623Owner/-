@@ -60,7 +60,12 @@
       const action = event.target.closest("[data-action]")?.dataset.action;
       if (action === "leave") leaveRoom();
       if (action === "sync") recoverRoomConnection();
-      if (action === "help") openRulesHelp();
+      if (action === "help") {
+        // Safari does not focus buttons on pointer clicks. Give the dialog a
+        // stable return target so closing it never jumps back to a text field.
+        event.target.closest("[data-action]").focus({ preventScroll: true });
+        openRulesHelp();
+      }
       if (action === "finish-effects") window.CWWPresentation.complete();
     });
   }
@@ -336,6 +341,12 @@
 
   function renderRoom() {
     if (!room) return;
+    const shell = $(".app-shell");
+    if (shell.dataset.phase !== room.phase) {
+      const focused = document.activeElement;
+      if (focused?.matches("input, textarea, select")) focused.blur();
+      shell.dataset.phase = room.phase;
+    }
     if (mode === "host") renderHost();
     if (mode === "player") renderPlayer();
     updateRulesHelp();
@@ -370,7 +381,7 @@
     if (room.phase !== Core.PHASES.RESULT) return "";
     return window.CWWPresentation.results({
       constraint: room.settings.constraint,
-      players: Core.activeRoster(room.players).sort((a, b) => a.joinedAt - b.joinedAt || a.id.localeCompare(b.id)).map(({ id, name, role }) => ({ id, name, role })),
+      players: Core.activeRoster(room.players).map(({ id, name, role }) => ({ id, name, role })),
       logs: presentationView().logs
     });
   }
@@ -410,9 +421,9 @@
     $("#rules-content").innerHTML = `
       ${context.suspect ? `<section><h3>今は容疑者です</h3><p>以後のワード入力と通常投票には参加できません。生存者のワード開示後の発言・話し合いに参加し、最後は容疑者だけで最終告発します。公開ログを見ながら人狼を探してください。</p></section>` : ""}
       ${roles[context.role] || ""}
-      ${context.master ? `<section><h3>マスターの進め方</h3><p>全員の役職確認後にゲームを開始し、画面の進行ボタンで開示・話し合い・投票を進めます。最後の週も、まず「通常投票へ」を使います。</p><p>「最終解決へ」は容疑者だけが投票する最終告発です。容疑者がいない状態で進めると、人狼陣営の勝ちになります。</p></section>` : ""}
-      <section><h3>ゲームの流れ</h3><p>役職確認 → 思考時間 → 伏せ入力 → 順番に開示 → 話し合い → 通常投票。決着しなければ次の週へ進みます。</p><ul><li>3人以上で遊べます。占い師ありは4人以上で有効です。</li><li>同じ週に同じワードが出るのはセーフです。前の週までに公開されたワードは使えません。</li><li>1週目の通常投票だけ「投票しない」を選べます。</li><li>通常投票で人狼が単独最多票なら村人陣営の勝ち。村人側が単独最多票なら、その人が容疑者になります。</li><li>通常投票の同票、またはスキップが単独最多票なら、新たな容疑者は出ません。</li></ul></section>
-      <section><h3>最終告発（最終解決）</h3><p>投票できるのは容疑者だけで、投票先は容疑者以外です。人狼を単独最多票にできれば村人陣営の勝ち。村人側を選んだ場合・同票・容疑者がいない場合は人狼陣営の勝ちです。</p><p>最終週の通常投票後、または容疑者以外が残り人狼数＋1人以下になったときは、最終告発に進みます。</p></section>
+      ${context.master ? `<section><h3>マスターの進め方</h3><p>全員の役職確認後にゲームを開始し、画面の進行ボタンで開示・話し合い・投票を進めます。最後の週も、まず「通常投票へ」を使います。</p><p>「容疑者による最終告発へ」は容疑者だけが投票する操作です。容疑者がいないときは選べません。最終週もまず通常投票へ進めてください。</p></section>` : ""}
+      <section><h3>ゲームの流れ</h3><p>役職確認 → 思考時間（全員の思考完了でスキップ可）→ 伏せ入力 → 順番に開示 → 話し合い → 通常投票。決着しなければ次の週へ進みます。</p><ul><li>3人以上で遊べます。占い師ありは4人以上で有効です。</li><li>同じ週に同じワードが出るのはセーフです。前の週までに公開されたワードは使えません。</li><li>1週目の通常投票だけ「投票しない」を選べます。</li><li>通常投票で人狼が単独最多票なら村人陣営の勝ち。村人側が単独最多票なら、その人が容疑者になります。</li><li>通常投票の同票、またはスキップが単独最多票なら、新たな容疑者は出ません。</li></ul></section>
+      <section><h3>容疑者による最終告発</h3><p>投票できるのは容疑者だけで、投票先は容疑者以外です。人狼を単独最多票にできれば村人陣営の勝ち。村人側を選んだ場合・同票は人狼陣営の勝ちです。最終週の通常投票後など、決着時に容疑者がいない場合も人狼陣営の勝ちです。</p><p>最終週の通常投票後、または容疑者以外が残り人狼数＋1人以下になったときは、最終告発に進みます。</p></section>
       <section><h3>占い師の秘密・会話のルール</h3><p>全員、ゲーム終了まで占い師の名乗り・偽名乗りは禁止です。占い師は正体やヒントを秘密にし、自分の気づきとして推理を伝えます。終了後は公開して振り返れます。</p><p>話し合いは参加者同士の会話で行います。この説明を開いても、ゲームやタイマーは止まりません。</p></section>
     `;
   }
@@ -822,6 +833,7 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
     const panel = $("#host-phase-panel");
     const living = Core.livingPlayers(room);
     const suspects = Core.suspectPlayers(room);
+    const hostPlaying = room.players[Room.userId]?.active !== false && Boolean(room.players[Room.userId]);
     if (room.phase === Core.PHASES.LOBBY) {
       panel.innerHTML = `<h2>待機中</h2><p class="muted">参加者が部屋コードを入力して入室するのを待っています。</p>`;
       return;
@@ -843,8 +855,8 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
     if (room.phase === Core.PHASES.THINK) {
       panel.innerHTML = `
         <h2>${room.week}週目: 思考時間</h2>
-        <div class="countdown" data-countdown="${room.thinkEndsAt}"></div>
-        <p class="muted">この時間はお題と役職を見ながら、伏せるワードを考える時間です。終了後に入力画面へ進みます。</p>
+        ${hostPlaying ? "" : `<div class="countdown" data-countdown="${room.thinkEndsAt}"></div>`}
+        <p class="muted">思考完了 ${living.filter(player => room.thinkReady?.[player.id]).length} / ${living.length}人。全員完了、または制限時間で入力へ進みます。</p>
       `;
       return;
     }
@@ -879,20 +891,21 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
     if (room.phase === Core.PHASES.DISCUSSION) {
       panel.innerHTML = `
         <h2>話し合い</h2>
-        ${room.discussionEndsAt ? `<div class="countdown" data-countdown="${room.discussionEndsAt}"></div>` : `<p class="muted">制限時間なし</p>`}
+        ${room.discussionEndsAt ? (hostPlaying ? "" : `<div class="countdown" data-countdown="${room.discussionEndsAt}"></div>`) : `<p class="muted">制限時間なし</p>`}
         <div class="button-row">
           <button id="start-vote" class="button warn">通常投票へ</button>
-          <button id="start-final" class="button secondary">最終解決へ</button>
+          <button id="start-final" class="button secondary" ${suspects.length ? "" : "disabled"}>容疑者による最終告発へ</button>
         </div>
+        <p class="muted">${suspects.length ? "最終告発は容疑者だけが投票します。人狼が単独最多票なら村人勝利、それ以外・同票は人狼勝利です。" : "容疑者がいないため最終告発はできません。通常投票へ進んでください。"}</p>
       `;
       $("#start-vote").addEventListener("click", () => mutate(state => Core.startVote(state, false)));
-      $("#start-final").addEventListener("click", () => mutate(state => Core.startVote(state, true)));
+      $("#start-final").addEventListener("click", () => mutate(state => Core.startFinalAccusation(state)));
       return;
     }
     if (room.phase === Core.PHASES.VOTE || room.phase === Core.PHASES.FINAL_VOTE) {
       const voters = Core.voteVoters(room);
       panel.innerHTML = `
-        <h2>${room.phase === Core.PHASES.FINAL_VOTE ? "最終解決" : "通常投票"}</h2>
+        <h2>${room.phase === Core.PHASES.FINAL_VOTE ? "最終告発" : "通常投票"}</h2>
         <p class="muted">投票済み ${Object.keys(room.votes || {}).length} / ${voters.length}</p>
       `;
       return;
@@ -915,34 +928,7 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
       panel.dataset.resultContent = html;
       $("#back-lobby").addEventListener("click", () => {
         hostDraftSettings = null;
-        mutate(state => {
-          state.phase = Core.PHASES.LOBBY;
-          state.week = 0;
-          state.roleReady = {};
-          state.seerId = "";
-          state.seerRevealed = false;
-          state.thinkEndsAt = null;
-          state.inputEndsAt = null;
-          state.discussionEndsAt = null;
-          state.submissions = {};
-          state.revealOrder = [];
-          state.revealIndex = 0;
-          state.logs = [];
-          state.votes = {};
-          state.voteHistory = [];
-          state.winner = "";
-          state.reason = "";
-          if (state.settings?.autoTopic) {
-            state.settings.topic = "";
-            state.settings.constraint = "";
-            state.settings.hint = "";
-          }
-          Object.values(state.players).forEach(player => {
-            player.role = "";
-            player.suspect = false;
-          });
-          return state;
-        });
+        mutate(state => Core.resetGame(state));
       });
     }
   }
@@ -983,6 +969,11 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
   }
 
   function renderParticipantPhase(panel, me, prefix) {
+    const phaseKey = `${roomCode}:${room.phase}:${room.week}`;
+    if (panel.dataset.phaseKey !== phaseKey) {
+      delete panel.dataset.markup;
+      panel.dataset.phaseKey = phaseKey;
+    }
     if (!me) {
       panel.innerHTML = `<h2>入室情報がありません</h2><p class="muted">トップに戻って入り直してください。</p>`;
       return;
@@ -995,7 +986,7 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
       const card = Core.privateCard(room, me.id);
       const confirmed = room.roleReady?.[me.id];
       const buttonId = `${prefix}-confirm-role`;
-      panel.innerHTML = confirmed ? `
+      const html = confirmed ? `
         <h2>確認済み</h2>
         <p class="muted">全員の確認完了と、マスターのゲーム開始を待っています。</p>
       ` : `
@@ -1004,15 +995,27 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
         <p class="muted">上のお題・役職カードを確認してください。</p>
         <button id="${buttonId}" class="button primary full">確認</button>
       `;
+      if (!setPanelMarkup(panel, html)) return;
       if (!confirmed) panel.querySelector(`#${buttonId}`).addEventListener("click", () => mutate(state => Core.confirmRole(state, me.id)));
       return;
     }
     if (room.phase === Core.PHASES.THINK) {
-      panel.innerHTML = `
+      const thinkers = Core.livingPlayers(room);
+      const ready = Boolean(room.thinkReady?.[me.id]);
+      const week = room.week;
+      const deadline = room.thinkEndsAt;
+      const buttonId = `${prefix}-complete-thinking`;
+      const html = `
         <h2>${room.week}週目: 思考時間</h2>
         <div class="countdown" data-countdown="${room.thinkEndsAt}"></div>
-        <p class="muted">お題と役職を見ながら、入力するワードを考えてください。タイマー終了後に入力できます。</p>
+        <p class="thinking-progress"></p>
+        ${me.suspect ? `<p class="muted">容疑者は思考完了の対象外です。公開ログを見ながら推理を続けてください。</p>` : `<button id="${buttonId}" class="button primary full" ${ready ? "disabled" : ""}>${ready ? "思考完了済み" : "思考完了"}</button>`}
+        <p class="muted">今回ワードを入力する全員が完了すると、残り時間をスキップします。制限時間でも自動で入力へ進みます。</p>
       `;
+      const changed = setPanelMarkup(panel, html);
+      panel.querySelector(".thinking-progress").textContent = `思考完了 ${thinkers.filter(player => room.thinkReady?.[player.id]).length} / ${thinkers.length}人`;
+      if (!changed) return;
+      if (!me.suspect && !ready) panel.querySelector(`#${buttonId}`).addEventListener("click", () => mutate(state => Core.completeThinking(state, me.id, week, deadline)));
       return;
     }
     if (room.phase === Core.PHASES.INPUT) {
@@ -1043,11 +1046,12 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
       if (current?.id === me.id) {
         const word = room.submissions?.[me.id]?.word || "";
         const buttonId = `${prefix}-reveal-word`;
-        panel.innerHTML = `
+        const html = `
           <h2>あなたの開示順です</h2>
           <p class="muted">ボタンを押したら、公開されたワードを声に出して読んでください。</p>
           <button id="${buttonId}" class="button primary full">「${escapeHtml(word)}」を明らかにする</button>
         `;
+        if (!setPanelMarkup(panel, html)) return;
         panel.querySelector(`#${buttonId}`).addEventListener("click", () => mutate(state => Core.revealCurrentWord(state, me.id)));
       } else {
         panel.innerHTML = `<h2>順番開示</h2><p>現在の開示順: <strong>${escapeHtml(current?.name || "完了")}</strong></p>`;
@@ -1081,20 +1085,21 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
     const voters = Core.voteVoters(room);
     const voted = room.votes?.[me.id];
     if (!voters.some(player => player.id === me.id)) {
-      panel.innerHTML = `<h2>${room.phase === Core.PHASES.FINAL_VOTE ? "最終解決" : "通常投票"}</h2><p class="muted">あなたにはこの投票の投票権がありません。</p>`;
+      panel.innerHTML = `<h2>${room.phase === Core.PHASES.FINAL_VOTE ? "最終告発" : "通常投票"}</h2><p class="muted">あなたにはこの投票の投票権がありません。</p>`;
       return;
     }
     if (voted) {
       panel.innerHTML = `<h2>投票済み</h2><p class="muted">全員の投票を待っています。</p>`;
       return;
     }
-    const candidates = Core.voteCandidates(room).filter(player => room.phase === Core.PHASES.FINAL_VOTE || player.id !== me.id).sort((a, b) => a.joinedAt - b.joinedAt || a.id.localeCompare(b.id));
+    const candidates = Core.voteCandidates(room).filter(player => room.phase === Core.PHASES.FINAL_VOTE || player.id !== me.id);
     const skipButton = Core.canSkipVote(room)
       ? `<button class="vote-option skip" data-target="${Core.SKIP_VOTE}">投票しない（スキップ）</button>`
       : "";
     const html = `
-      <h2>${room.phase === Core.PHASES.FINAL_VOTE ? "最終解決" : "通常投票"}</h2>
+      <h2>${room.phase === Core.PHASES.FINAL_VOTE ? "最終告発" : "通常投票"}</h2>
       ${room.phase === Core.PHASES.FINAL_VOTE && me.suspect ? `<p class="accusation-heading">あなたの告発が、結末を決める</p>` : ""}
+      ${room.phase === Core.PHASES.FINAL_VOTE ? `<p class="muted">容疑者だけが投票します。人狼が単独最多票なら村人勝利。それ以外・同票は人狼勝利です。</p>` : ""}
       <div class="vote-options">
         ${candidates.map(player => `<button class="vote-option" data-target="${player.id}">${escapeHtml(player.name)} に投票</button>`).join("")}
         ${skipButton}
@@ -1106,6 +1111,13 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
     panel.querySelectorAll("[data-target]").forEach(button => {
       button.addEventListener("click", () => mutate(state => Core.castVote(state, me.id, button.dataset.target)));
     });
+  }
+
+  function setPanelMarkup(panel, html) {
+    if (panel.dataset.markup === html) return false;
+    panel.innerHTML = html;
+    panel.dataset.markup = html;
+    return true;
   }
 
   async function submitWord(inputId) {
@@ -1141,21 +1153,11 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
   async function tick() {
     renderCountdowns();
     if (!room || busy) return;
-    if (room.phase === Core.PHASES.THINK && Date.now() >= room.thinkEndsAt) {
-      await mutate(state => state.phase === Core.PHASES.THINK ? Core.startInput(state) : state);
-      return;
-    }
-    if (room.phase === Core.PHASES.INPUT && Core.allLivingSubmitted(room)) {
-      await advanceToReveal();
-      return;
-    }
-    if (mode !== "host") return;
-    if ((room.phase === Core.PHASES.VOTE || room.phase === Core.PHASES.FINAL_VOTE) && Core.allVotesSubmitted(room)) {
-      await mutate(state => Core.resolveVotes(state));
-    }
-    if (room.phase === Core.PHASES.DISCUSSION && room.discussionEndsAt && Date.now() >= room.discussionEndsAt) {
-      await mutate(state => Core.startVote(state, false));
-    }
+    const host = mode === "host";
+    if (!Core.automaticAction(room, Date.now(), host)) return;
+    const phase = room.phase;
+    const week = room.week;
+    await mutate(state => Core.advanceAutomatically(state, phase, week, Date.now(), host && state.hostId === Room.userId));
   }
 
   function renderCountdowns() {
@@ -1208,7 +1210,7 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
 
   function renderPlayers(selector, revealRoles) {
     const result = room.phase === Core.PHASES.RESULT;
-    const html = Core.activeRoster(room.players).sort((a, b) => a.joinedAt - b.joinedAt || a.id.localeCompare(b.id)).map(player => {
+    const html = Core.activeRoster(room.players).map(player => {
       const role = (revealRoles && result) ? ` / ${player.role}` : "";
       const suspect = player.suspect ? " / 容疑者" : "";
       return `<span class="chip ${player.suspect ? "suspect" : ""}">${escapeHtml(player.name)}${escapeHtml(role)}${suspect}</span>`;
@@ -1231,7 +1233,7 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
       grouped.get(key).words.push(log);
     });
     const ordered = [
-      ...Core.activeRoster(room.players).sort((a, b) => a.joinedAt - b.joinedAt || a.id.localeCompare(b.id))
+      ...Core.activeRoster(room.players)
         .filter(player => grouped.has(player.id))
         .map(player => ({ ...grouped.get(player.id), id: player.id })),
       ...[...grouped.entries()]
