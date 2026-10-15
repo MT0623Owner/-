@@ -20,6 +20,21 @@ const output = process.env.CWW_CAPTURE_DIR || 'test-results/live-release';
     if (await page.locator('#rules-dialog').isVisible()) await page.locator('#close-rules').click();
     if (await page.locator('#presentation-event').isVisible()) await page.locator('#skip-effect').click();
   };
+  async function acknowledgePresentation() {
+    await expect.poll(async () => (await state()).phase).toBe('presentation');
+    const id = (await state()).presentation.id;
+    for (let i = 0; i < pages.length; i++) {
+      const page = pages[i];
+      await expect(page.locator('#presentation-event')).toBeVisible();
+      await page.locator('#skip-effect').click();
+      if (i < pages.length - 1) {
+        await expect(page.locator('#skip-effect')).toBeDisabled();
+        const waiting = await state();
+        if (waiting.presentation?.id !== id || waiting.thinkEndsAt || waiting.discussionEndsAt) throw new Error('Presentation advanced before all clients confirmed');
+      }
+    }
+    await expect.poll(async () => (await state()).presentation).toBeNull();
+  }
   async function start(seer) {
     await host.locator('#host-topic-mode').selectOption('local');
     await host.locator('#host-topic-auto').fill('動物');
@@ -68,6 +83,7 @@ const output = process.env.CWW_CAPTURE_DIR || 'test-results/live-release';
       const page = byId.get(id);
       await dismiss(page);
       await page.locator(`#${prefix(page)}-reveal-word`).click();
+      await acknowledgePresentation();
     }
     await expect.poll(async () => (await state()).phase).toMatch(/discussion|suspectTalk/);
     if ((await state()).phase === 'suspectTalk') {
@@ -91,6 +107,7 @@ const output = process.env.CWW_CAPTURE_DIR || 'test-results/live-release';
       const selected = target === '__skip__' || voter.id !== target || final ? target : Object.values(voting.players).find(p => p.id !== target && !p.suspect && p.active !== false).id;
       await page.locator(`#${page === host ? 'host-participant' : 'player-phase'}-panel [data-target="${selected}"]`).click();
     }
+    await acknowledgePresentation();
   }
   try {
     await fs.mkdir(output, { recursive: true });

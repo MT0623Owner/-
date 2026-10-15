@@ -774,8 +774,6 @@ body[data-week-mood="final"] .app-shell { background: linear-gradient(#111827, #
 .app-shell[data-compare="true"] #host-participant-panel { order: -2; }
 .app-shell[data-compare="true"] #host-phase-panel { order: -1; }
 .app-shell[data-compare="true"] .roster-panel { order: 3; }
-.app-shell[data-compare="true"] .room-code-card { order: 4; }
-.app-shell[data-compare="true"] .invite-panel { order: 5; }
 .app-shell[data-compare="true"] .private-card:not(.card-expanded) { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 5px; padding: 10px 14px; text-align: left; }
 .app-shell[data-compare="true"] .private-card:not(.card-expanded) .card-label,
 .app-shell[data-compare="true"] .private-card:not(.card-expanded) .card-divider,
@@ -903,3 +901,8 @@ body:has(.rules-dialog[open]) {
     grid-template-columns: 1fr;
   }
 }
+
+/* Shared presentation gates remain modal until the room resumes. */
+.presentation-event { inset: 0; margin: auto; transform: none; pointer-events: auto; max-height: 80dvh; }
+.presentation-event::backdrop, #invite-dialog::backdrop { background: #000b; }
+#invite-dialog { width: min(420px, calc(100vw - 32px)); max-height: 85dvh; overflow: auto; background: #101d30; color: var(--text); border: 1px solid #7dd3fc; border-radius: 18px; padding: 20px; }

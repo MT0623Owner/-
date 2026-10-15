@@ -16,14 +16,14 @@ function revealRoom(suspect = false) {
 
 test('last reveal starts the configured discussion timer', () => {
   const state = revealRoom();
-  for (const id of state.revealOrder) Core.revealCurrentWord(state, id, 40000);
+  for (const id of state.revealOrder) revealCurrentWordAndConfirm(state, id, 40000);
   assert.equal(state.phase, Core.PHASES.DISCUSSION);
   assert.equal(state.discussionEndsAt, 100000);
 });
 
 test('suspect speech does not consume discussion time', () => {
   const state = revealRoom(true);
-  for (const id of state.revealOrder) Core.revealCurrentWord(state, id, 40000);
+  for (const id of state.revealOrder) revealCurrentWordAndConfirm(state, id, 40000);
   assert.equal(state.phase, Core.PHASES.SUSPECT_TALK);
   assert.equal(state.discussionEndsAt, null);
   Core.startDiscussion(state, 90000);
@@ -122,3 +122,15 @@ test('automatic transitions recheck current deadlines and voting snapshots', () 
   assert.equal(state.phase, 'vote');
   assert.equal(state.voteHistory.length, 0);
 });
+
+function revealCurrentWordAndConfirm(state, ...args) {
+  Core.revealCurrentWord(state, ...args);
+  const gate = state.presentation;
+  for (const id of gate?.required || []) Core.confirmPresentation(state, id, gate.id, args.at(-1));
+}
+
+function resolveVotesAndConfirm(state, ...args) {
+  Core.resolveVotes(state, ...args);
+  const gate = state.presentation;
+  for (const id of gate?.required || []) Core.confirmPresentation(state, id, gate.id, args.at(-1));
+}

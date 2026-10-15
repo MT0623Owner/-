@@ -4,6 +4,8 @@
   const escape = value => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const reduced = matchMedia("(prefers-reduced-motion: reduce)");
   let previous = null;
+  let gate = null;
+  let actions = {};
   let timer = null;
   let finishEffect = null;
   let audio = null;
@@ -19,7 +21,10 @@
     try { localStorage.setItem(`cww.effects.${key}`, String(value)); } catch (_) { /* optional storage */ }
   }
 
-  function init() {
+  function init(callbacks = {}) {
+    actions = callbacks;
+    document.querySelector("#presentation-event").addEventListener("cancel", e => { if (gate) e.preventDefault(); });
+    document.querySelector("#force-effect").addEventListener("click", () => { if (gate) actions.force?.(gate.id); });
     try {
       sound = localStorage.getItem("cww.effects.sound") === "true";
       vibration = localStorage.getItem("cww.effects.vibration") === "true";
@@ -41,7 +46,7 @@
     });
     document.addEventListener("pointerdown", unlockAudio, { passive: true });
     document.addEventListener("keydown", unlockAudio);
-    document.querySelector("#skip-effect").addEventListener("click", complete);
+    document.querySelector("#skip-effect").addEventListener("click", () => { if (gate) actions.confirm?.(gate.id); else complete(); });
     reduced.addEventListener("change", () => { if (reduced.matches) complete(); });
     document.addEventListener("visibilitychange", () => { if (document.hidden) complete(); });
     document.addEventListener("click", event => {
@@ -92,6 +97,7 @@
     const finish = finishEffect;
     finishEffect = null;
     if (finish) finish();
+    document.querySelector("#presentation-event").close();
     document.querySelector("#presentation-event").classList.add("hidden");
     document.querySelector("#presentation-event").classList.remove("suspect-spotlight");
     document.querySelectorAll(".fx-flip, .fx-awaken, .fx-wolf, .fx-word, .fx-result").forEach(el => {
@@ -100,6 +106,7 @@
   }
 
   function complete() {
+    if (gate) { clearTimeout(timer); const finish = finishEffect; finishEffect = null; finish?.(); return; }
     pendingEvents.length = 0;
     finishCurrent();
   }
@@ -122,7 +129,8 @@
     const body = document.querySelector("#effect-body");
     body.innerHTML = content;
     panel.classList.remove("hidden");
-    if (reduced.matches || document.hidden) { steps.forEach(step => step()); panel.classList.add("hidden"); return; }
+    if (!panel.open) panel.showModal();
+    if (reduced.matches || document.hidden) { steps.forEach(step => step()); panel.classList.add("hidden"); panel.close(); return; }
     let index = 0;
     finishEffect = () => { while (index < steps.length) steps[index++](); };
     const advance = () => {
@@ -160,7 +168,53 @@
     return { rows, title, suspect };
   }
 
+  function renderGate(view) {
+    const next = view.presentation;
+    const panel = document.querySelector("#presentation-event");
+    if (!next) {
+      if (gate) { gate = null; finishCurrent(); }
+      return;
+    }
+    if (gate?.id !== next.id) {
+      gate = null;
+      complete();
+      panel.classList.remove("hidden");
+      panel.dataset.effect = next.kind;
+      const log = view.logs.find(log => log.id === next.logId);
+      const vote = view.voteHistory[next.voteIndex];
+      const result = vote ? tally(vote, view.suspects) : null;
+      document.querySelector("#effect-title").textContent = log ? `${log.playerName}さんのワード` : result?.title || "確認してください";
+      document.querySelector("#effect-body").innerHTML = log ? `<strong class="reveal-word">${escape(log.word)}</strong>` : result?.rows.map(row => `<div class="effect-count-row"><span>${escape(row.name)}</span><strong>${row.count}票</strong></div>`).join("") || "";
+      if (result && !reduced.matches && !document.hidden) {
+        const cells = [...document.querySelectorAll("#effect-body .effect-count-row strong")];
+        let count = 0;
+        const finish = () => cells.forEach((cell, i) => { cell.textContent = `${result.rows[i].count}票`; });
+        finishEffect = finish;
+        cells.forEach(cell => { cell.textContent = "0票"; });
+        const step = () => {
+          count++;
+          cells.forEach((cell, i) => { cell.textContent = `${Math.min(count, result.rows[i].count)}票`; });
+          if (count < Math.max(...result.rows.map(row => row.count))) timer = setTimeout(step, 400);
+          else { finish(); finishEffect = null; }
+        };
+        timer = setTimeout(step, OPEN_MS);
+      }
+      panel.classList.toggle("suspect-spotlight", Boolean(result?.suspect));
+      if (!panel.open) panel.showModal();
+      animate(document.querySelector("#effect-body"), "fx-word");
+      cue();
+    }
+    gate = next;
+    const button = document.querySelector("#skip-effect");
+    button.textContent = next.selfReady ? "確認済み・全員を待っています" : "確認した";
+    button.disabled = next.selfReady || !next.eligible;
+    delete button.dataset.busyDisabled;
+    document.querySelector("#effect-waiting").textContent = `確認 ${next.total - next.waiting.length} / ${next.total}人。未確認：${next.waiting.join("、") || "なし"}。全員の確認後に進みます。`;
+    document.querySelector("#force-effect").classList.toggle("hidden", !view.host);
+  }
+
   function update(view) {
+    renderGate(view);
     const freshGame = !previous || previous.code !== view.code || (view.phase === "roleCheck" && previous.phase !== "roleCheck" && previous.week > 0);
     if (freshGame || view.phase === "lobby") { complete(); reviews.clear(); previous = null; }
     const prior = previous;
@@ -181,12 +235,12 @@
       if (view.phase === "result") el.dataset.assessment = String(reviews.get(el.dataset.logId) || 0);
       else delete el.dataset.assessment;
     });
-    if (prior && view.logs.length > prior.logs.length && !["vote", "finalVote", "result"].includes(view.phase)) {
+    if (!view.presentation && prior && view.logs.length > prior.logs.length && !["vote", "finalVote", "result"].includes(view.phase)) {
       const added = view.logs.slice(prior.logs.length);
       added.forEach(log => event(`${log.playerName}さんのワード`, `<strong class="reveal-word">${escape(log.word)}</strong>`, "word"));
       added.forEach(log => document.querySelectorAll("[data-log-id]").forEach(el => { if (el.dataset.logId === log.id) animate(el, "fx-word"); }));
     }
-    if (prior && view.voteHistory.length > prior.voteHistory.length) {
+    if (!view.presentation && prior && view.voteHistory.length > prior.voteHistory.length) {
       const vote = view.voteHistory.at(-1);
       const result = tally(vote, view.suspects);
       const html = result.rows.map((row, i) => `<div class="effect-count-row"><span>${escape(row.name)}</span><strong data-effect-count="${i}">0票</strong></div>`).join("");
@@ -246,10 +300,11 @@
       const label = ["未判定", "制約に合う", "制約から外れる"][state];
       return `<button class="review-word" data-local-control data-review-word="${escape(log.id)}" data-word="${escape(log.word)}" data-assessment="${state}" aria-label="${escape(player.name)}、${log.week}週目、${escape(log.word)}：${label}。押すと変更"><strong>${escape(log.word)}</strong><small class="review-label">${label}</small></button>`;
     }).join("")}</div></div>`).join("");
-    return `<section class="result-reveal"><h3>正体を公開</h3><button class="button secondary small" data-action="finish-effects" data-local-control>演出をスキップ</button><div class="result-card-grid">${cards}</div></section><section><h3>ワードを振り返る</h3><p class="muted">左から古い順。ワードを押すと「未判定 → 制約に合う → 外れる」を切り替えます。この端末だけの印で、勝敗は変わりません。</p><div class="review-table" style="--word-columns: ${columns}" tabindex="0" role="region" aria-label="参加者ごとのワードの振り返り">${view.logs.length ? timeline : "<p>公開されたワードはありません。</p>"}</div></section>`;
+    return `<section class="result-reveal"><h3>正体を公開</h3><button class="button secondary small" data-action="finish-effects" data-local-control>すべて表示</button><div class="result-card-grid">${cards}</div></section><section><h3>ワードを振り返る</h3><p class="muted">左から古い順。ワードを押すと「未判定 → 制約に合う → 外れる」を切り替えます。この端末だけの印で、勝敗は変わりません。</p><div class="review-table" style="--word-columns: ${columns}" tabindex="0" role="region" aria-label="参加者ごとのワードの振り返り">${view.logs.length ? timeline : "<p>公開されたワードはありません。</p>"}</div></section>`;
   }
 
   function reset() {
+    gate = null;
     complete();
     previous = null;
     reviews.clear();

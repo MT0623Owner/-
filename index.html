@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>制約ワードウルフ</title>
   <meta name="description" content="スマホでQRコードや参加URLを開いて遊べる、制約ワードウルフ。3人以上で部屋を作り、お題・制約・投票で人狼を探そう。">
-  <link rel="stylesheet" href="./styles.css?v=1.4.2">
+  <link rel="stylesheet" href="./styles.css?v=1.5.0">
   <script src="./vendor/qrcode.js?v=2.0.4" defer></script>
-  <script src="./game-core.js?v=1.4.2" defer></script>
-  <script src="./presentation.js?v=1.4.2" defer></script>
+  <script src="./game-core.js?v=1.5.0" defer></script>
+  <script src="./presentation.js?v=1.5.0" defer></script>
   <script src="./firebase-config.js" defer></script>
-  <script type="module" src="./room-sync.js?v=1.4.2"></script>
-  <script src="./app.js?v=1.4.2" defer></script>
+  <script type="module" src="./room-sync.js?v=1.5.0"></script>
+  <script src="./app.js?v=1.5.0" defer></script>
 </head>
 <body>
   <main class="app-shell">
@@ -28,17 +28,21 @@
       <button class="button secondary full" data-action="reload" data-local-control>画面を再読み込み</button>
     </aside>
     <div id="suspect-indicator" class="suspect-indicator hidden"></div>
-    <aside id="presentation-event" class="presentation-event hidden" aria-label="進行の演出">
+    <dialog id="presentation-event" class="presentation-event hidden" aria-label="進行の演出">
       <h2 id="effect-title" aria-live="polite"></h2>
       <div id="effect-body"></div>
-      <button id="skip-effect" class="button secondary small" data-local-control>演出をスキップ</button>
-    </aside>
+      <p id="effect-network" role="status"></p>
+      <button id="effect-reload" class="button secondary hidden" data-action="reload" data-local-control>通信を確認して再読み込み</button>
+      <p id="effect-waiting" aria-live="polite"></p>
+      <button id="force-effect" class="button secondary hidden">未確認者がいても進める</button>
+      <button id="skip-effect" class="button secondary small">確認した</button>
+    </dialog>
 
     <section id="screen-home" class="screen is-active">
       <div class="hero">
         <div class="eyebrow-row">
           <p class="eyebrow">Master + Room Code</p>
-          <span class="version-label">バージョン 1.4.2</span>
+          <span class="version-label">バージョン 1.5.0</span>
         </div>
         <h1>制約ワードウルフ</h1>
         <p>マスター端末で部屋を作り、参加者はスマホでQRコードを読み取るか、参加URLを開いて参加します。部屋コードからも入室できます。</p>
@@ -94,6 +98,7 @@
           <h1>マスター画面</h1>
         </div>
         <div class="header-actions">
+          <button class="button ghost small" data-action="invite" data-local-control>招待</button>
           <button class="button ghost small" data-action="sync">再同期</button>
           <button class="button ghost small" data-action="leave">退出</button>
         </div>
@@ -101,19 +106,6 @@
 
       <button class="button secondary full help-trigger" data-action="help" data-local-control>ルール・自分の役割</button>
       <div class="stack">
-        <div class="room-code-card">
-          <span>部屋コード</span>
-          <strong id="host-room-code">----</strong>
-        </div>
-        <section class="panel invite-panel">
-          <h2>友だちを招待</h2>
-          <p class="muted">スマホのカメラで読み取り、名前を入力して参加してください。</p>
-          <div id="room-qr" class="room-qr"></div>
-          <label class="field-label">参加URL
-            <input id="room-invite-url" class="input" type="url" readonly aria-label="部屋への参加URL">
-          </label>
-          <button id="copy-room-link" class="button secondary full">参加URLをコピー</button>
-        </section>
         <section id="host-setup-panel" class="panel"></section>
         <section class="panel roster-panel">
           <h2>参加者</h2>
@@ -167,5 +159,19 @@
     </div>
     <div id="rules-content" class="rules-content"></div>
   </dialog>
+<dialog id="invite-dialog">        <div class="room-code-card">
+          <span>部屋コード</span>
+          <strong id="host-room-code">----</strong>
+        </div>
+        <section class="panel invite-panel">
+          <h2>友だちを招待</h2>
+          <p class="muted">スマホのカメラで読み取り、名前を入力して参加してください。</p>
+          <div id="room-qr" class="room-qr"></div>
+          <label class="field-label">参加URL
+            <input id="room-invite-url" class="input" type="url" readonly aria-label="部屋への参加URL">
+          </label>
+          <button id="copy-room-link" class="button secondary full">参加URLをコピー</button>
+        </section>
+<button class="button secondary full" data-action="close-invite" data-local-control>閉じる</button></dialog>
 </body>
 </html>
