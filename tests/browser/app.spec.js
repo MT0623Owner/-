@@ -110,8 +110,37 @@ test('late reconnection result after leaving does not resurrect the room', async
   await expect(page.locator('#toast')).not.toHaveClass(/show/);
 });
 
+test('stalled recovery can retry and its late response cannot replace fresh participants', async ({ page }) => {
+  await openRoom(page, { host: true });
+  await page.clock.install();
+  await page.evaluate(() => {
+    window.recoveryReads = 0;
+    window.CWWRoom.getRoom = () => {
+      window.recoveryReads++;
+      if (window.recoveryReads === 1) return new Promise(resolve => { window.finishStalledRecovery = resolve; });
+      const state = structuredClone(window.testRoom);
+      state.players.p3 = { id: 'p3', name: '追加の人', active: true };
+      window.testRoom = state;
+      return Promise.resolve(state);
+    };
+  });
+  const sync = page.locator('#screen-host [data-action="sync"]');
+  await sync.click();
+  await page.clock.runFor(16000);
+  await sync.click();
+  expect(await page.evaluate(() => window.recoveryReads)).toBe(2);
+  await expect(page.locator('#host-player-list')).toContainText('追加の人');
+  await page.evaluate(() => {
+    const stale = structuredClone(window.testRoom);
+    delete stale.players.p3;
+    window.finishStalledRecovery(stale);
+  });
+  await expect(page.locator('#host-player-list')).toContainText('追加の人');
+});
+
 test('new phase actions stay disabled until the previous write finishes', async ({ page }) => {
   await openRoom(page, { input: true });
+  await page.clock.install();
   await page.evaluate(() => {
     window.CWWRoom.mutateRoom = async (_code, mutate) => {
       const state = mutate(structuredClone(window.testRoom));
@@ -125,8 +154,14 @@ test('new phase actions stay disabled until the previous write finishes', async 
   await page.locator('#player-hidden-word').fill('ライオン');
   await page.locator('#player-submit-word').click();
   await expect(page.locator('#player-reveal-word')).toBeDisabled();
+  await page.clock.runFor(16000);
+  await expect(page.locator('#connection-notice')).toBeVisible();
+  await expect(page.locator('#connection-notice')).toContainText('送信が完了している場合もあります');
+  await expect(page.locator('#connection-notice [data-action="reload"]')).toBeEnabled();
+  await expect(page.locator('#player-reveal-word')).toBeDisabled();
   await page.evaluate(() => window.finishWrite());
   await expect(page.locator('#player-reveal-word')).toBeEnabled();
+  await expect(page.locator('#connection-notice')).not.toBeVisible();
 });
 
 test('role help follows the private seer transition once and can be reopened', async ({ page }) => {
