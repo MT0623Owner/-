@@ -230,29 +230,231 @@
     }
   ];
 
-  const GENERIC_CONSTRAINTS = {
-    1: [
-      { constraint: "赤い要素があるもの", hint: "色" },
-      { constraint: "手で持てるもの", hint: "大きさ" },
-      { constraint: "家の中で見かけやすいもの", hint: "場所" },
-      { constraint: "子どもにも知られているもの", hint: "認知度" },
-      { constraint: "値段が高すぎないもの", hint: "価格" }
-    ],
-    2: [
-      { constraint: "20世紀以降と関係が深いもの", hint: "時代" },
-      { constraint: "日本国外との関係が強いもの", hint: "地域" },
-      { constraint: "賞やランキングに関係しやすいもの", hint: "評価" },
-      { constraint: "専門用語で語られやすいもの", hint: "知識" },
-      { constraint: "学校で習う可能性があるもの", hint: "学習" }
-    ],
-    3: [
-      { constraint: "主人公側ではないもの", hint: "立場" },
-      { constraint: "初期から登場しているもの", hint: "時期" },
-      { constraint: "特定の組織や勢力に属するもの", hint: "所属" },
-      { constraint: "能力や特殊設定が重要なもの", hint: "能力" },
-      { constraint: "名前や由来に元ネタがあるもの", hint: "由来" }
+  TOPIC_BANK.push(...[
+  {
+    "level": 1,
+    "topic": "スポーツ",
+    "constraints": [
+      {
+        "constraint": "ボールを使う競技",
+        "hint": "道具"
+      },
+      {
+        "constraint": "水上や水中で行う競技",
+        "hint": "場所"
+      },
+      {
+        "constraint": "ネットを使う競技",
+        "hint": "設備"
+      }
     ]
-  };
+  },
+  {
+    "level": 1,
+    "topic": "家電",
+    "constraints": [
+      {
+        "constraint": "食材や料理に使う家電",
+        "hint": "用途"
+      },
+      {
+        "constraint": "温めたり熱を発生させたりする家電",
+        "hint": "温度"
+      },
+      {
+        "constraint": "電池や充電でコードをつながず使える製品がある家電",
+        "hint": "電源"
+      }
+    ]
+  },
+  {
+    "level": 1,
+    "topic": "職業",
+    "constraints": [
+      {
+        "constraint": "食べ物や飲み物の提供に関わる職業",
+        "hint": "分野"
+      },
+      {
+        "constraint": "人に何かを教える職業",
+        "hint": "役割"
+      },
+      {
+        "constraint": "乗り物の運転や操縦をする職業",
+        "hint": "道具"
+      }
+    ]
+  },
+  {
+    "level": 1,
+    "topic": "飲み物",
+    "constraints": [
+      {
+        "constraint": "温かくして飲むこともある飲み物",
+        "hint": "温度"
+      },
+      {
+        "constraint": "果物を原料に使う飲み物",
+        "hint": "原料"
+      },
+      {
+        "constraint": "牛乳を使う飲み物",
+        "hint": "原料"
+      }
+    ]
+  },
+  {
+    "level": 1,
+    "topic": "料理",
+    "constraints": [
+      {
+        "constraint": "米を使う料理",
+        "hint": "材料"
+      },
+      {
+        "constraint": "麺を使う料理",
+        "hint": "材料"
+      },
+      {
+        "constraint": "油で揚げて作る料理",
+        "hint": "調理"
+      }
+    ]
+  },
+  {
+    "level": 1,
+    "topic": "お菓子",
+    "constraints": [
+      {
+        "constraint": "チョコレートを使う種類があるお菓子",
+        "hint": "材料"
+      },
+      {
+        "constraint": "焼いて作るお菓子",
+        "hint": "調理"
+      },
+      {
+        "constraint": "冷やして食べるお菓子",
+        "hint": "温度"
+      }
+    ]
+  },
+  {
+    "level": 1,
+    "topic": "身につけるもの",
+    "constraints": [
+      {
+        "constraint": "頭や顔につけるもの",
+        "hint": "部位"
+      },
+      {
+        "constraint": "寒さを防ぐために使うもの",
+        "hint": "用途"
+      },
+      {
+        "constraint": "左右で一組になっているもの",
+        "hint": "組合せ"
+      }
+    ]
+  },
+  {
+    "level": 1,
+    "topic": "家にあるもの",
+    "constraints": [
+      {
+        "constraint": "布でできているもの",
+        "hint": "素材"
+      },
+      {
+        "constraint": "中に物を入れるためのもの",
+        "hint": "用途"
+      },
+      {
+        "constraint": "電気を使うもの",
+        "hint": "動力"
+      }
+    ]
+  },
+  {
+    "level": 2,
+    "topic": "楽器",
+    "constraints": [
+      {
+        "constraint": "弦を振動させて音を出す楽器",
+        "hint": "構造"
+      },
+      {
+        "constraint": "息を吹き込んで演奏する楽器",
+        "hint": "奏法"
+      },
+      {
+        "constraint": "たたいて音を出す楽器",
+        "hint": "奏法"
+      }
+    ]
+  },
+  {
+    "level": 2,
+    "topic": "日本の都道府県",
+    "constraints": [
+      {
+        "constraint": "海に面している都道府県",
+        "hint": "地形"
+      },
+      {
+        "constraint": "名前に山・川・島のいずれかが入る都道府県",
+        "hint": "文字"
+      },
+      {
+        "constraint": "関東地方または近畿地方にある都道府県",
+        "hint": "地域"
+      }
+    ]
+  },
+  {
+    "level": 2,
+    "topic": "植物",
+    "constraints": [
+      {
+        "constraint": "食用になる実をつける植物",
+        "hint": "用途"
+      },
+      {
+        "constraint": "木として育つ植物",
+        "hint": "形態"
+      },
+      {
+        "constraint": "花を観賞するために育てる植物",
+        "hint": "用途"
+      }
+    ]
+  },
+  {
+    "level": 2,
+    "topic": "漫画",
+    "constraints": [
+      {
+        "constraint": "スポーツを題材にした漫画",
+        "hint": "題材"
+      },
+      {
+        "constraint": "アニメ化された漫画",
+        "hint": "展開"
+      },
+      {
+        "constraint": "現実にはない能力が登場する漫画",
+        "hint": "設定"
+      }
+    ]
+  }
+]);
+
+  const TOPICS_BY_LEVEL = new Map([1, 2, 3].map(level => [level, TOPIC_BANK.filter(item => (item.level || 1) === level)]));
+  const TOPICS_BY_NAME = new Map();
+  for (const item of TOPIC_BANK) {
+    const key = normalizeText(item.topic);
+    TOPICS_BY_NAME.set(key, [...(TOPICS_BY_NAME.get(key) || []), item]);
+  }
 
   function defaultSettings() {
     return {
@@ -790,22 +992,20 @@
   }
 
   function generateTopicSet(random = Math.random, level = 1, preferredTopic = "") {
-    const targetLevel = clamp(Number(level) || 1, 1, 3);
+    const targetLevel = Math.floor(clamp(Number(level) || 1, 1, 3));
     const preferred = String(preferredTopic || "").trim();
     const preferredKey = normalizeText(preferred);
-    let bank = TOPIC_BANK.filter(item => (item.level || 1) === targetLevel);
+    let bank = TOPICS_BY_LEVEL.get(targetLevel);
 
     if (preferredKey) {
-      const exact = TOPIC_BANK.filter(item => normalizeText(item.topic) === preferredKey && (item.level || 1) === targetLevel);
-      const fallbackExact = TOPIC_BANK.filter(item => normalizeText(item.topic) === preferredKey);
+      const fallbackExact = TOPICS_BY_NAME.get(preferredKey) || [];
+      const exact = fallbackExact.filter(item => (item.level || 1) === targetLevel);
       if (exact.length) {
         bank = exact;
       } else if (fallbackExact.length) {
         bank = fallbackExact;
       } else {
-        const generic = GENERIC_CONSTRAINTS[targetLevel] || GENERIC_CONSTRAINTS[1];
-        const rule = generic[Math.floor(random() * generic.length)];
-        return sanitizeTopicSet({ topic: preferred, constraint: rule.constraint, hint: rule.hint });
+        throw new Error("そのお題はローカル候補にありません。一覧から選ぶか、お題指定を空にしてください。自由なお題は手動入力・外部AIで使えます。");
       }
     }
 

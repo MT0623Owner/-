@@ -631,3 +631,5 @@ test('AI retries invalid content once and does not call API when the roster is i
   await expect(page.locator('#host-phase-panel')).toContainText('役職確認');
   expect(calls).toBe(2);
 });
+
+test('local topics offer new categories and recover from an unsupported preference',async({page})=>{await openRoom(page,{host:true});await page.locator('#host-topic-mode').selectOption('local');await expect(page.locator('#local-topic-options option')).toHaveCount(29);await page.locator('#host-topic-auto').fill('未登録カテゴリ');await page.locator('#host-start').click();await expect(page.locator('#toast')).toContainText('ローカル候補にありません');expect(await page.evaluate(()=>window.testRoom.phase)).toBe('lobby');await page.locator('#host-topic-auto').fill('料理');await page.locator('#host-start').click();await expect(page.locator('#host-phase-panel')).toContainText('役職確認');expect(await page.evaluate(()=>window.testRoom.settings.topic)).toBe('料理');});

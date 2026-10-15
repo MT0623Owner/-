@@ -573,7 +573,9 @@
           </select>
         </label>
         <label class="field-label">お題指定（任意）
-          <input id="host-topic-auto" class="input" value="${escapeHtml(settings.topic)}" placeholder="空ならお題も生成">
+          <input id="host-topic-auto" list="local-topic-options" class="input" value="${escapeHtml(settings.topic)}" placeholder="空ならお題も生成">
+          <datalist id="local-topic-options">${[...new Set(Core.TOPIC_BANK.map(item => item.topic))].map(topic => `<option value="${escapeHtml(topic)}"></option>`).join("")}</datalist>
+          <span class="muted">登録済みのお題から選択。空欄なら選んだレベルからランダムに生成します。</span>
         </label>
       </div>
       <div id="external-topic-fields" class="${settings.topicMode === "external" ? "" : "hidden"}">
