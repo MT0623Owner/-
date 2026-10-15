@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>制約ワードウルフ</title>
   <meta name="description" content="スマホでQRコードや参加URLを開いて遊べる、制約ワードウルフ。3人以上で部屋を作り、お題・制約・投票で人狼を探そう。">
-  <link rel="stylesheet" href="./styles.css?v=1.4.1">
+  <link rel="stylesheet" href="./styles.css?v=1.4.2">
   <script src="./vendor/qrcode.js?v=2.0.4" defer></script>
-  <script src="./game-core.js?v=1.4.1" defer></script>
-  <script src="./presentation.js?v=1.4.1" defer></script>
+  <script src="./game-core.js?v=1.4.2" defer></script>
+  <script src="./presentation.js?v=1.4.2" defer></script>
   <script src="./firebase-config.js" defer></script>
-  <script type="module" src="./room-sync.js?v=1.4.1"></script>
-  <script src="./app.js?v=1.4.1" defer></script>
+  <script type="module" src="./room-sync.js?v=1.4.2"></script>
+  <script src="./app.js?v=1.4.2" defer></script>
 </head>
 <body>
   <main class="app-shell">
@@ -22,6 +22,11 @@
       <button id="effect-vibration" class="button ghost small" data-local-control aria-pressed="false">振動 OFF</button>
     </div>
     <div id="saving-indicator" class="saving-indicator hidden" role="status">送信中…</div>
+    <aside id="connection-notice" class="connection-notice hidden" role="status">
+      <strong>通信の確認に時間がかかっています</strong>
+      <p>送信が完了している場合もあります。通信を確認し、画面を再読み込みして「前回の部屋」から再入室してください。</p>
+      <button class="button secondary full" data-action="reload" data-local-control>画面を再読み込み</button>
+    </aside>
     <div id="suspect-indicator" class="suspect-indicator hidden"></div>
     <aside id="presentation-event" class="presentation-event hidden" aria-label="進行の演出">
       <h2 id="effect-title" aria-live="polite"></h2>
@@ -33,7 +38,7 @@
       <div class="hero">
         <div class="eyebrow-row">
           <p class="eyebrow">Master + Room Code</p>
-          <span class="version-label">バージョン 1.4.1</span>
+          <span class="version-label">バージョン 1.4.2</span>
         </div>
         <h1>制約ワードウルフ</h1>
         <p>マスター端末で部屋を作り、参加者はスマホでQRコードを読み取るか、参加URLを開いて参加します。部屋コードからも入室できます。</p>

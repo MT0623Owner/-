@@ -25,6 +25,7 @@
     "gemini-flash-latest"
   ];
   const GEMINI_TIMEOUT_MS = 15000;
+  const CONNECTION_WAIT_MS = 15000;
   const $ = selector => document.querySelector(selector);
 
   document.addEventListener("DOMContentLoaded", init);
@@ -60,6 +61,7 @@
       const action = event.target.closest("[data-action]")?.dataset.action;
       if (action === "leave") leaveRoom();
       if (action === "sync") recoverRoomConnection();
+      if (action === "reload") location.reload();
       if (action === "help") {
         // Safari does not focus buttons on pointer clicks. Give the dialog a
         // stable return target so closing it never jumps back to a text field.
@@ -288,8 +290,10 @@
     const code = roomCode;
     const generation = subscriptionGeneration;
     try {
-      await Room.ready();
-      const latest = await Room.getRoom(code);
+      const latest = await withReadTimeout(async () => {
+        await Room.ready();
+        return Room.getRoom(code);
+      });
       if (generation !== subscriptionGeneration || code !== roomCode || !mode) return;
       if (!latest) {
         showToast("部屋が見つからなくなりました。");
@@ -307,6 +311,20 @@
       if (generation === subscriptionGeneration) showToast(`接続の復帰に失敗しました。通信状態を確認してください。${error.message ? ` (${error.message})` : ""}`);
     } finally {
       syncingRoom = false;
+    }
+  }
+
+  async function withReadTimeout(task) {
+    let timeout;
+    try {
+      return await Promise.race([
+        Promise.resolve().then(task),
+        new Promise((_, reject) => {
+          timeout = setTimeout(() => reject(new Error("再同期が時間切れになりました。もう一度再同期するか、画面を再読み込みしてください。")), CONNECTION_WAIT_MS);
+        })
+      ]);
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
@@ -1211,11 +1229,16 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
     if (busy) return;
     busy = true;
     renderBusyState();
+    // A delayed write may already be committed: keep duplicate actions blocked
+    // and offer a fresh page instead of timing out and resending the mutation.
+    const slowOperation = setTimeout(() => $("#connection-notice").classList.remove("hidden"), CONNECTION_WAIT_MS);
     try {
       await task();
     } catch (error) {
       showToast(error.message || String(error));
     } finally {
+      clearTimeout(slowOperation);
+      $("#connection-notice").classList.add("hidden");
       busy = false;
       renderBusyState();
     }
