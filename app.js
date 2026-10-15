@@ -67,6 +67,13 @@
         openRulesHelp();
       }
       if (action === "finish-effects") window.CWWPresentation.complete();
+      if (action === "toggle-card") {
+        const card = event.target.closest(".private-card");
+        const expanded = card.classList.toggle("card-expanded");
+        const button = card.querySelector("[data-action='toggle-card']");
+        button.setAttribute("aria-expanded", String(expanded));
+        button.textContent = expanded ? "カードを閉じる" : "カードを開く";
+      }
     });
   }
 
@@ -342,17 +349,23 @@
   function renderRoom() {
     if (!room) return;
     const shell = $(".app-shell");
-    if (shell.dataset.phase !== room.phase) {
+    const phaseChanged = shell.dataset.phase !== room.phase;
+    if (phaseChanged) {
       const focused = document.activeElement;
       if (focused?.matches("input, textarea, select")) focused.blur();
       shell.dataset.phase = room.phase;
+      document.querySelectorAll(".private-card").forEach(card => card.classList.remove("card-expanded"));
     }
+    shell.dataset.compare = String([Core.PHASES.SUSPECT_TALK, Core.PHASES.DISCUSSION, Core.PHASES.VOTE, Core.PHASES.FINAL_VOTE].includes(room.phase));
     if (mode === "host") renderHost();
     if (mode === "player") renderPlayer();
     updateRulesHelp();
     window.CWWPresentation.update(presentationView());
     renderBusyState();
     updateWakeLock();
+    if (phaseChanged && shell.dataset.compare === "true" && !$("#rules-dialog").open) {
+      window.scrollTo({ top: 0, behavior: "instant" });
+    }
   }
 
   function helpContext() {
@@ -414,17 +427,27 @@
       ? `あなたの役割：${context.role}${context.suspect ? "・容疑者" : ""}`
       : "ルール・遊び方";
     const roles = {
-      [Core.ROLES.VILLAGER]: `<h3>村人の遊び方</h3><p>お題に沿うワードを自由に選び、公開されたワードの共通点から人狼の制約を推理します。通常投票で人狼を単独最多票にできれば、村人陣営の勝ちです。</p><p>占い師ありの場合、2週目に村人陣営の1人だけが占い師になります。</p>`,
-      [Core.ROLES.WOLF]: `<h3>人狼の遊び方</h3><p>自分のカードにある制約と、お題の両方に合うワードを選んでください。制約を守りながら村人に紛れ、投票で特定されないように話し合います。占い師の偽名乗りは禁止です。</p>`,
-      [Core.ROLES.SEER]: `<h3>占い師の遊び方</h3><p>あなたは村人陣営です。2週目から、自分だけが人狼の制約に関係するヒントを一つ知ります。人狼が誰かを直接知る能力ではありません。</p><ul><li>ゲーム終了まで、占い師だと名乗ったり、役職カードを見せたりしてはいけません。</li><li>ヒントをそのまま教えることも、言い換えて秘密の情報として伝えることも禁止です。</li><li>ヒントをワード選び・推理・投票に使うのは自由です。公開ワードを根拠に、自分の気づきとして推理を話せます。</li><li>人狼に似た回答で探りを入れるかどうかは自由です。容疑者になっても秘密を守ります。</li></ul><h3>発言の例（実際のヒントとは無関係です）</h3><p>例のヒントが「飼育」の場合：</p><ul><li>○ 公開されたワードを見て「ハムスターとカメ、どちらも家で飼える動物だよね」と話す。</li><li>× 「占い師です。ヒントは飼育でした」と話す。</li><li>× 「もらった情報はペット関係」と言い換えて教える。</li></ul>`
+      [Core.ROLES.VILLAGER]: { side: "村人陣営", goal: "ワードを見比べて人狼を探す", action: "お題に沿うワードを自由に選び、共通点を推理します。", forbid: "過去の公開ワードの再使用・占い師の名乗りは禁止", note: "同じ週で偶然かぶるのはOKです。占い師の偽名乗りも、全員禁止です。" },
+      [Core.ROLES.WOLF]: { side: "人狼陣営", goal: "お題と制約の両方に合うワードを出す", action: "自分のカードの制約を守り、特定されないように話し合います。", forbid: "制約違反・過去の公開ワードの再使用は禁止", note: "占い師の名乗り・偽名乗りも、ゲーム終了まで全員禁止です。" },
+      [Core.ROLES.SEER]: { side: "村人陣営", goal: "ヒントを自分の推理・ワード選び・投票に使う", action: "公開ワードを根拠に、自分の気づきとして推理を話せます。", forbid: "名乗り・カード提示・ヒントの公開は禁止", note: "ヒントを言い換えて秘密の情報として教えることも禁止。ゲーム終了まで守ります。" }
     };
+    const role = roles[context.role];
+    if (role && context.suspect) {
+      role.goal = "公開ワードを比べ、話し合いと最終告発で人狼を探す";
+      role.action = context.role === Core.ROLES.SEER
+        ? "ヒントは自分の推理に使えます。話すときは公開ワードを根拠にします。"
+        : "最後は容疑者だけが投票します。ワード入力と通常投票はできません。";
+    }
+    $("#rules-content").dataset.role = context.role;
     $("#rules-content").innerHTML = `
-      ${context.suspect ? `<section><h3>今は容疑者です</h3><p>以後のワード入力と通常投票には参加できません。生存者のワード開示後の発言・話し合いに参加し、最後は容疑者だけで最終告発します。公開ログを見ながら人狼を探してください。</p></section>` : ""}
-      ${roles[context.role] || ""}
-      ${context.master ? `<section><h3>マスターの進め方</h3><p>全員の役職確認後にゲームを開始し、画面の進行ボタンで開示・話し合い・投票を進めます。最後の週も、まず「通常投票へ」を使います。</p><p>「容疑者による最終告発へ」は容疑者だけが投票する操作です。容疑者がいないときは選べません。最終週もまず通常投票へ進めてください。</p></section>` : ""}
-      <section><h3>ゲームの流れ</h3><p>役職確認 → 思考時間（全員の思考完了でスキップ可）→ 伏せ入力 → 順番に開示 → 話し合い → 通常投票。決着しなければ次の週へ進みます。</p><ul><li>3人以上で遊べます。占い師ありは4人以上で有効です。</li><li>同じ週に同じワードが出るのはセーフです。前の週までに公開されたワードは使えません。</li><li>1週目の通常投票だけ「投票しない」を選べます。</li><li>通常投票で人狼が単独最多票なら村人陣営の勝ち。村人側が単独最多票なら、その人が容疑者になります。</li><li>通常投票の同票、またはスキップが単独最多票なら、新たな容疑者は出ません。</li></ul></section>
-      <section><h3>容疑者による最終告発</h3><p>投票できるのは容疑者だけで、投票先は容疑者以外です。人狼を単独最多票にできれば村人陣営の勝ち。村人側を選んだ場合・同票は人狼陣営の勝ちです。最終週の通常投票後など、決着時に容疑者がいない場合も人狼陣営の勝ちです。</p><p>最終週の通常投票後、または容疑者以外が残り人狼数＋1人以下になったときは、最終告発に進みます。</p></section>
-      <section><h3>占い師の秘密・会話のルール</h3><p>全員、ゲーム終了まで占い師の名乗り・偽名乗りは禁止です。占い師は正体やヒントを秘密にし、自分の気づきとして推理を伝えます。終了後は公開して振り返れます。</p><p>話し合いは参加者同士の会話で行います。この説明を開いても、ゲームやタイマーは止まりません。</p></section>
+      ${context.suspect ? `<section class="rules-quick suspect-guidance"><h3>今は容疑者です</h3><div class="rule-do"><span>すること</span><strong>話し合いに参加し、最後に人狼を告発</strong></div><div class="rule-ban"><span>できないこと</span><strong>ワード入力・通常投票</strong><p>占い師なら、容疑者になっても正体とヒントは秘密です。</p></div></section>` : ""}
+      ${role ? `<section class="rules-quick"><div class="rules-role-label">${role.side}</div><h3>${context.role}の遊び方</h3><div class="rule-do"><span>すること</span><strong>${role.goal}</strong><p>${role.action}</p></div><div class="rule-ban"><span>禁止</span><strong>${role.forbid}</strong><p>${role.note}</p></div></section>` : `<section class="rules-quick"><h3>まず覚えること</h3><div class="rule-do"><span>すること</span><strong>お題に沿うワードを出し、人狼を推理する</strong><p>人狼だけは、自分のカードの制約にも従います。</p></div><div class="rule-ban"><span>禁止</span><strong>過去の公開ワードの再使用・占い師の名乗り</strong><p>同じ週で偶然かぶるのはOK。占い師のヒントを直接・言い換えて教えるのは禁止です。</p></div></section>`}
+      ${context.role === Core.ROLES.SEER ? `<details class="rules-detail"><summary>占い師の発言例と補足</summary><p>2週目に本人だけが役職とヒントを知ります。人狼が誰かを直接知る能力ではありません。人狼に似たワードで探るかどうかは自由です。</p><p><strong>例のヒントが「飼育」の場合</strong>（実際のヒントとは無関係）：</p><ul><li><strong>OK：</strong>公開された「ハムスター」「カメ」を見て、「どちらも家で飼える動物だよね」と推理する。</li><li><strong>禁止：</strong>「占い師です。ヒントは飼育でした」「もらった情報はペット関係」と話す。</li></ul></details>` : ""}
+      ${context.master ? `<details class="rules-detail"><summary>マスターの進め方</summary><p>全員の役職確認後にゲームを開始し、開示・話し合い・投票を進めます。<strong>最後の週も、まず「通常投票へ」。</strong></p><p>「容疑者による最終告発へ」は容疑者だけの投票です。<strong>容疑者0人では選べません。</strong></p></details>` : ""}
+      <details class="rules-detail"><summary>ゲームの流れ・共通ルール</summary><p>役職確認 → 思考時間 → 伏せ入力 → 順番に開示 → 話し合い → 通常投票。決着しなければ次の週へ進みます。</p><ul><li><strong>思考完了を入力対象の全員が押すとスキップ。</strong>制限時間でも進みます。</li><li><strong>3人以上</strong>で遊べます。占い師ありは<strong>4人以上</strong>で有効です。</li><li><strong>同じ週のワードかぶりはOK。</strong>前の週までの公開ワードは使えません。</li><li><strong>1週目の通常投票だけ</strong>「投票しない」を選べます。</li><li><strong>人狼が単独最多票なら村人勝利。</strong>村人側が単独最多票なら、その人が容疑者になります。</li><li>通常投票の同票、またはスキップが単独最多票なら、新たな容疑者は出ません。</li></ul></details>
+      <details class="rules-detail"><summary>容疑者による最終告発・勝敗</summary><p><strong>投票できるのは容疑者だけ。</strong>投票先は容疑者以外です。<strong>人狼が単独最多票なら村人勝利。同票・誤告発は人狼勝利</strong>です。決着時に容疑者がいない場合も人狼勝利です。</p><p>最終週の通常投票後、または容疑者以外が残り人狼数＋1人以下になると最終告発に進みます。</p></details>
+      <details class="rules-detail"><summary>占い師の秘密・会話のルール</summary><p><strong>全員、終了まで占い師の名乗り・偽名乗りは禁止。</strong>占い師は正体やヒントを秘密にし、公開ワードからの自分の気づきとして推理を伝えます。終了後は公開して振り返れます。</p></details>
+      <p class="rules-footnote">会話は参加者同士で行います。説明を開いてもゲームとタイマーは進みます。</p>
     `;
   }
 
@@ -957,11 +980,15 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
       <p class="card-label">役職</p>
       <strong class="card-role ${roleClass(privateCard.role)}">${escapeHtml(privateCard.role)}</strong>
       <div class="card-info"><strong>${escapeHtml(privateCard.label)}</strong><br>${escapeHtml(privateCard.value)}</div>
-      ${room.settings.useSeer ? `<p class="card-note">全員共通：ゲーム終了まで、占い師の名乗り・偽名乗りは禁止です。占い師はヒントを言い換えて教えることもできませんが、自分の気づきとして推理を話せます。</p>` : ""}
-      ${privateCard.role === Core.ROLES.SEER ? `<p class="card-note">この役職とヒントは自分だけの秘密です。ヒントをワード選びや投票に使い、話し合いでは公開ワードを根拠に推理を伝えてください。容疑者になっても、このルールは同じです。</p>` : ""}
+      ${room.settings.useSeer ? `<p class="card-note"><strong>禁止：占い師の名乗り・偽名乗り。</strong>終了まで全員が守ります。</p>` : ""}
+      ${privateCard.role === Core.ROLES.SEER ? `<p class="card-note"><strong>役職・ヒントは秘密。</strong>ヒントを直接・言い換えて教えるのは禁止です。<strong>公開ワードから自分の気づきとして推理を話すのはOK。</strong></p>` : ""}
+      <button class="card-toggle" data-local-control data-action="toggle-card" aria-expanded="false">カードを開く</button>
     `;
     if (card.dataset.content !== html) { card.innerHTML = html; card.dataset.content = html; }
     card.dataset.role = privateCard.role;
+    const toggle = card.querySelector(".card-toggle");
+    toggle.setAttribute("aria-expanded", String(card.classList.contains("card-expanded")));
+    toggle.textContent = card.classList.contains("card-expanded") ? "カードを閉じる" : "カードを開く";
   }
 
   function renderPlayerPhase(me) {
@@ -1220,11 +1247,16 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
 
   function renderLogs(selector) {
     const logs = room.logs || [];
+    const container = $(selector);
+    const comparison = document.querySelector(".app-shell").dataset.compare === "true" || room.phase === Core.PHASES.RESULT;
+    container.classList.toggle("comparison-log", comparison);
+    container.closest(".log-panel").querySelector("h2").textContent = comparison ? "ワードを比較" : "公開ログ";
     if (!logs.length) {
-      $(selector).innerHTML = `<div class="result-item">公開ログはまだありません。</div>`;
+      container.innerHTML = `<div class="result-item">公開ログはまだありません。</div>`;
       return;
     }
-    const container = $(selector);
+    const columns = Math.max(1, ...logs.map(log => log.week));
+    container.style.setProperty("--word-columns", columns);
     if (!container.querySelector("[data-log-player]")) container.replaceChildren();
     const grouped = new Map();
     logs.forEach(log => {
@@ -1241,7 +1273,8 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
         .map(([id, row]) => ({ ...row, id }))
     ];
     const kept = new Set();
-    ordered.forEach(row => {
+    const accents = ["#5eead4", "#a5b4fc", "#fcd34d", "#f9a8d4", "#7dd3fc", "#c4b5fd"];
+    ordered.forEach((row, index) => {
       let element = [...container.children].find(el => el.dataset.logPlayer === row.id);
       if (!element) {
         element = document.createElement("div");
@@ -1251,8 +1284,17 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
         container.append(element);
       }
       kept.add(element);
+      element.style.setProperty("--player-accent", accents[index % accents.length]);
+      element.dataset.suspect = String(Boolean(room.players[row.id]?.suspect));
       element.firstElementChild.textContent = row.name;
+      if (room.players[row.id]?.suspect) {
+        const label = document.createElement("small");
+        label.className = "log-suspect";
+        label.textContent = "容疑者";
+        element.firstElementChild.append(label);
+      }
       const words = element.lastElementChild;
+      words.querySelectorAll(".missing-word").forEach(el => el.remove());
       row.words.forEach((log, i) => {
         let word = [...words.children].find(el => el.dataset.logId === log.id);
         if (!word) {
@@ -1262,9 +1304,22 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
         }
         word.classList.toggle("latest-word", i === row.words.length - 1);
         word.classList.toggle("previous-word", i !== row.words.length - 1);
-        word.textContent = `${log.week}週目：${log.word}`;
+        word.style.gridColumn = comparison ? String(log.week) : "";
+        word.textContent = comparison ? log.word : `${log.week}週目：${log.word}`;
+        word.setAttribute("aria-label", `${row.name}、${log.week}週目、${log.word}`);
       });
       [...words.children].forEach(el => { if (!row.words.some(log => log.id === el.dataset.logId)) el.remove(); });
+      if (comparison) {
+        for (let week = 1; week <= columns; week++) {
+          if (row.words.some(log => log.week === week)) continue;
+          const missing = document.createElement("span");
+          missing.className = "missing-word";
+          missing.style.gridColumn = String(week);
+          missing.textContent = "—";
+          missing.setAttribute("aria-label", `${week}週目の公開ワードなし`);
+          words.append(missing);
+        }
+      }
     });
     [...container.children].forEach(el => { if (!kept.has(el)) el.remove(); });
   }

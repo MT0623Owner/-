@@ -10,6 +10,10 @@
   let sound = false;
   let vibration = false;
   const reviews = new Map();
+  const pendingEvents = [];
+  // Leave time to read the revealed word/result and choose the skip button.
+  const OPEN_MS = 600;
+  const READ_MS = 4500;
 
   function remember(key, value) {
     try { localStorage.setItem(`cww.effects.${key}`, String(value)); } catch (_) { /* optional storage */ }
@@ -82,7 +86,7 @@
     } catch (_) { /* optional feedback */ }
   }
 
-  function complete() {
+  function finishCurrent() {
     clearTimeout(timer);
     timer = null;
     const finish = finishEffect;
@@ -95,8 +99,23 @@
     });
   }
 
+  function complete() {
+    pendingEvents.length = 0;
+    finishCurrent();
+  }
+
   function event(title, content, type, steps = []) {
+    const panel = document.querySelector("#presentation-event");
+    if (type === "word" && panel.dataset.effect === "word" && !panel.classList.contains("hidden")) {
+      pendingEvents.push({ title, content, type, steps });
+      return;
+    }
+    // A vote result takes precedence over any remaining word reveals.
     complete();
+    showEvent({ title, content, type, steps });
+  }
+
+  function showEvent({ title, content, type, steps }) {
     const panel = document.querySelector("#presentation-event");
     panel.dataset.effect = type;
     document.querySelector("#effect-title").textContent = title;
@@ -109,10 +128,13 @@
     const advance = () => {
       if (index < steps.length) {
         steps[index++]();
-        timer = setTimeout(advance, Math.min(180, 1000 / Math.max(steps.length, 1)));
-      } else timer = setTimeout(complete, 800);
+        timer = setTimeout(advance, Math.min(500, 4000 / Math.max(steps.length, 1)));
+      } else timer = setTimeout(() => {
+        finishCurrent();
+        if (pendingEvents.length) showEvent(pendingEvents.shift());
+      }, READ_MS);
     };
-    timer = setTimeout(advance, 300);
+    timer = setTimeout(advance, OPEN_MS);
     cue();
   }
 
@@ -142,6 +164,8 @@
     const freshGame = !previous || previous.code !== view.code || (view.phase === "roleCheck" && previous.phase !== "roleCheck" && previous.week > 0);
     if (freshGame || view.phase === "lobby") { complete(); reviews.clear(); previous = null; }
     const prior = previous;
+    if (prior?.phase !== view.phase && ["vote", "finalVote", "result"].includes(view.phase)
+        && document.querySelector("#presentation-event").dataset.effect === "word") complete();
     const active = !["lobby", "result"].includes(view.phase);
     document.body.dataset.weekMood = active ? (view.week >= view.maxWeeks ? "final" : view.week > 1 ? "middle" : "early") : "";
     const badge = document.querySelector("#suspect-indicator");
@@ -157,10 +181,9 @@
       if (view.phase === "result") el.dataset.assessment = String(reviews.get(el.dataset.logId) || 0);
       else delete el.dataset.assessment;
     });
-    if (prior && view.logs.length > prior.logs.length) {
+    if (prior && view.logs.length > prior.logs.length && !["vote", "finalVote", "result"].includes(view.phase)) {
       const added = view.logs.slice(prior.logs.length);
-      const latest = added[added.length - 1];
-      event(`${latest.playerName}さんのワード`, `<strong class="reveal-word">${escape(latest.word)}</strong>`, "word");
+      added.forEach(log => event(`${log.playerName}さんのワード`, `<strong class="reveal-word">${escape(log.word)}</strong>`, "word"));
       added.forEach(log => document.querySelectorAll("[data-log-id]").forEach(el => { if (el.dataset.logId === log.id) animate(el, "fx-word"); }));
     }
     if (prior && view.voteHistory.length > prior.voteHistory.length) {
@@ -181,7 +204,7 @@
     }
     if (view.phase === "result" && prior?.phase !== "result") {
       // Only end-of-game public data reaches this renderer.
-      document.querySelectorAll(".result-reveal-card").forEach((el, i) => { el.style.setProperty("--reveal-delay", `${i * 180}ms`); animate(el, "fx-result"); });
+      document.querySelectorAll(".result-reveal-card").forEach((el, i) => { el.style.setProperty("--reveal-delay", `${Math.min(i * 850, 6500)}ms`); animate(el, "fx-result"); });
     }
     if (view.me.role && active && prior?.me.role !== view.me.role) {
       const card = document.querySelector(view.host ? "#host-player-card" : "#player-card");
@@ -215,13 +238,15 @@
 
   function results(view) {
     const cards = view.players.map(player => `<article class="result-reveal-card"><strong>${escape(player.name)}</strong><p class="${player.role === "人狼" ? "role-wolf" : player.role === "占い師" ? "role-seer" : "role-villager"}">${escape(player.role)}</p>${player.role === "人狼" ? `<p>制約：${escape(view.constraint)}</p>` : ""}</article>`).join("");
-    const weeks = [...new Set(view.logs.map(log => log.week))].sort((a, b) => a - b);
-    const timeline = weeks.map(week => `<section class="timeline-week"><h3>${week}週目</h3>${view.logs.filter(log => log.week === week).map(log => {
+    const columns = Math.max(1, ...view.logs.map(log => log.week));
+    const timeline = view.players.map(player => `<div class="review-row"><strong>${escape(player.name)}</strong><div class="review-words">${Array.from({ length: columns }, (_, i) => {
+      const log = view.logs.find(log => log.playerId === player.id && log.week === i + 1);
+      if (!log) return `<span class="missing-word" aria-label="${i + 1}週目の公開ワードなし">—</span>`;
       const state = reviews.get(log.id) || 0;
       const label = ["未判定", "制約に合う", "制約から外れる"][state];
-      return `<button class="review-word" data-local-control data-review-word="${escape(log.id)}" data-word="${escape(log.word)}" data-assessment="${state}" aria-label="${escape(log.word)}：${label}。押すと変更"><span>${escape(log.playerName)}</span><strong>${escape(log.word)}</strong><small class="review-label">${label}</small></button>`;
-    }).join("")}</section>`).join("");
-    return `<section class="result-reveal"><h3>正体を公開</h3><button class="button secondary small" data-action="finish-effects" data-local-control>演出をスキップ</button><div class="result-card-grid">${cards}</div></section><section><h3>ワードのタイムライン</h3><p class="muted">ワードを押して「未判定 → 制約に合う → 制約から外れる」を切り替えられます。話し合い用の、この端末だけの印です。勝敗は変わりません。</p>${timeline || "<p>公開されたワードはありません。</p>"}</section>`;
+      return `<button class="review-word" data-local-control data-review-word="${escape(log.id)}" data-word="${escape(log.word)}" data-assessment="${state}" aria-label="${escape(player.name)}、${log.week}週目、${escape(log.word)}：${label}。押すと変更"><strong>${escape(log.word)}</strong><small class="review-label">${label}</small></button>`;
+    }).join("")}</div></div>`).join("");
+    return `<section class="result-reveal"><h3>正体を公開</h3><button class="button secondary small" data-action="finish-effects" data-local-control>演出をスキップ</button><div class="result-card-grid">${cards}</div></section><section><h3>ワードを振り返る</h3><p class="muted">左から古い順。ワードを押すと「未判定 → 制約に合う → 外れる」を切り替えます。この端末だけの印で、勝敗は変わりません。</p><div class="review-table" style="--word-columns: ${columns}" tabindex="0" role="region" aria-label="参加者ごとのワードの振り返り">${view.logs.length ? timeline : "<p>公開されたワードはありません。</p>"}</div></section>`;
   }
 
   function reset() {
