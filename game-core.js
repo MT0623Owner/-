@@ -24,7 +24,7 @@
   };
 
   const SKIP_VOTE = "__skip__";
-  const DEFAULT_AI_MODEL = "gemini-2.5-flash";
+  const DEFAULT_AI_MODEL = "gemini-3.5-flash-lite";
 
   const TEMPLATES = [
     { topic: "動物", constraint: "サバンナにいる", hint: "生息地" },
@@ -304,7 +304,7 @@
 
   function normalizeAiModel(model) {
     const value = String(model || DEFAULT_AI_MODEL).trim().replace(/^models\//, "");
-    if (!value || value === "gemini-2.5-flash-preview-09-2025") return DEFAULT_AI_MODEL;
+    if (!value || ["gemini-2.5-flash", "gemini-2.5-flash-preview-09-2025", "gemini-2.5-flash-preview-09-25"].includes(value)) return DEFAULT_AI_MODEL;
     return value;
   }
 

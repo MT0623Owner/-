@@ -4,7 +4,7 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.CWWAI = api;
 })(typeof globalThis !== 'undefined' ? globalThis : window, function() {
-  const DEFAULT_MODEL = 'gemini-2.5-flash';
+  const DEFAULT_MODEL = 'gemini-3.5-flash-lite';
   const normalize = value => value.normalize('NFKC').replace(/\s/g, '').toLowerCase();
   function validate(candidate, minimum = 6) {
     const invalid = () => { throw new Error('遊べるお題の条件を満たしていません。'); };

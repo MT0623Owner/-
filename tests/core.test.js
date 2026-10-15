@@ -55,7 +55,7 @@ function startInputWeek(state, now = 1000) {
   assert.equal(external.autoTopic, true);
   assert.equal(external.aiModel, "gemini-test");
   const retiredPreview = Core.normalizeSettings({ topicMode: "external", aiModel: "gemini-2.5-flash-preview-09-2025" });
-  assert.equal(retiredPreview.aiModel, "gemini-2.5-flash");
+  assert.equal(retiredPreview.aiModel, "gemini-3.5-flash-lite");
 }
 
 {
