@@ -161,6 +161,8 @@ test('role help follows the private seer transition once and can be reopened', a
   });
   await expect(page.locator('#rules-title')).toHaveText('あなたの役割：占い師');
   await expect(dialog).toContainText('自分の気づきとして推理を話せます');
+  await expect(dialog.locator('.rule-ban > strong')).toBeInViewport();
+  await expect(dialog.locator('.rule-ban > strong')).toHaveText('名乗り・カード提示・ヒントの公開は禁止');
   await expect(dialog).not.toContainText('秘密の方向');
   await page.locator('#close-rules').click();
   await page.locator('#screen-player [data-action="help"]').click();
@@ -173,6 +175,7 @@ test('role help follows the private seer transition once and can be reopened', a
   });
   await expect(dialog).toContainText('今は容疑者です');
   await expect(dialog).toContainText('占い師の遊び方');
+  await expect(dialog.locator('.rule-do > strong').last()).toHaveText('公開ワードを比べ、話し合いと最終告発で人狼を探す');
   await page.locator('#close-rules').click();
   await page.evaluate(() => window.pushRoom(structuredClone(window.testRoom)));
   await expect(dialog).not.toBeVisible();
@@ -201,6 +204,8 @@ test('participating master receives wolf guidance without another players privat
   });
   const dialog = page.locator('#rules-dialog');
   await expect(dialog).toContainText('人狼の遊び方');
+  await expect(dialog.locator('.rule-do > strong')).toBeInViewport();
+  await expect(dialog.locator('.rule-ban > strong')).toBeInViewport();
   await expect(dialog).toContainText('マスターの進め方');
   await expect(dialog).not.toContainText('他人の秘密');
   await expect(dialog).not.toContainText('占い師の遊び方');

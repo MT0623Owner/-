@@ -47,8 +47,9 @@ async function publishWord(page, count = 1) {
 
 async function screenshot(page, name) {
   if (!process.env.CWW_CAPTURE_DIR) return;
-  await fs.mkdir(process.env.CWW_CAPTURE_DIR, { recursive: true });
-  await page.screenshot({ path: path.join(process.env.CWW_CAPTURE_DIR, `${name}.png`), fullPage: true, scale: 'css' });
+  const directory = path.join(process.env.CWW_CAPTURE_DIR, test.info().project.name);
+  await fs.mkdir(directory, { recursive: true });
+  await page.screenshot({ path: path.join(directory, `${name}.png`), fullPage: !name.startsWith('comparison-'), scale: 'css' });
 }
 
 for (const layout of [
@@ -80,7 +81,7 @@ for (const layout of [
     await expect(page.locator(`#${prefix}-hidden-word`)).toHaveValue('キリン');
     await expect(page.locator(`#${prefix}-submit-word`)).toBeEnabled();
     await publishWord(page);
-    await expect(page.locator('#presentation-event')).not.toBeVisible({ timeout: 4000 });
+    await expect(page.locator('#presentation-event')).not.toBeVisible({ timeout: 7000 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 
@@ -263,3 +264,89 @@ test('ten-second urgency, stable vote targets and new game cleanup', async ({ pa
   await expect(page.locator('#player-vote-summary')).not.toBeVisible();
   await expect(page.locator('#presentation-event')).not.toBeVisible();
 });
+
+test('reveals leave reading time, queue later words and skip clears the queue', async ({ page }) => {
+  await openGame(page);
+  await page.clock.install();
+  await publishWord(page);
+  await page.clock.runFor(3000);
+  await expect(page.locator('#presentation-event')).toBeVisible();
+  await page.evaluate(() => {
+    const state = structuredClone(window.testRoom);
+    state.logs.push({ id: 'next-word', week: 1, playerId: 'p3', playerName: 'p3', word: 'キリン' });
+    window.pushRoom(state);
+  });
+  await expect(page.locator('#effect-body')).toHaveText('ライオン');
+  await page.clock.runFor(2200);
+  await expect(page.locator('#effect-body')).toHaveText('キリン');
+  await publishWord(page);
+  await page.locator('#skip-effect').click();
+  await page.clock.runFor(10000);
+  await expect(page.locator('#presentation-event')).not.toBeVisible();
+  await publishWord(page, 2);
+  await page.evaluate(() => {
+    const state = structuredClone(window.testRoom);
+    state.phase = 'vote'; state.votes = {};
+    window.pushRoom(state);
+  });
+  await page.clock.runFor(10000);
+  await expect(page.locator('#presentation-event')).not.toBeVisible();
+  expect(await page.evaluate(() => window.writeCount)).toBe(0);
+});
+
+for (const host of [false, true]) {
+  test(`${host ? 'master' : 'player'} compares four people in one viewport and keeps many rounds scrollable`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openGame(page, host);
+    const prefix = host ? 'host' : 'player';
+    await page.evaluate(() => {
+      const state = structuredClone(window.testRoom);
+      const names = ['マスター', 'Codex', 'Android', 'iPad'];
+      const words = [['学校', '会社'], ['公園', '海岸', '山頂'], ['家', '野球場', 'トイレ'], ['公園', 'ディズニーランド', 'スタジアム']];
+      state.logs = Object.values(state.players).flatMap((player, i) => {
+        player.name = names[i];
+        return words[i].map((word, week) => ({ id: `${player.id}-${week}`, week: week + 1, playerId: player.id, playerName: player.name, word }));
+      });
+      state.phase = 'vote'; state.week = 3; state.votes = {};
+      window.pushRoom(state);
+      window.CWWPresentation.complete();
+    });
+    const log = page.locator(`#${prefix}-log`);
+    await expect(log.locator('.log-row')).toHaveCount(4);
+    await expect(log).not.toContainText('週目');
+    const bounds = await log.boundingBox();
+    expect(bounds.y).toBeGreaterThanOrEqual(0);
+    expect(bounds.y + bounds.height).toBeLessThan(844);
+    expect(await log.evaluate(el => el.scrollHeight <= el.clientHeight + 1)).toBe(true);
+    expect(await log.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    const line = log.locator('[data-log-player="p1"] [data-log-id]');
+    const ys = await line.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().y));
+    expect(Math.max(...ys) - Math.min(...ys)).toBeLessThan(20);
+    await expect(log.locator('[data-log-player="host"] .missing-word')).toHaveCount(1);
+    const card = page.locator(host ? '#host-player-card' : '#player-card');
+    await card.locator('.card-toggle').click();
+    await expect(card.locator('.card-info')).toBeVisible();
+    await page.evaluate(() => window.pushRoom(structuredClone(window.testRoom)));
+    await expect(card.locator('.card-info')).toBeVisible();
+    await card.locator('.card-toggle').click();
+    await expect(card.locator('.card-info')).not.toBeVisible();
+    await screenshot(page, `comparison-${prefix}`);
+    await page.evaluate(() => {
+      const state = structuredClone(window.testRoom);
+      for (let i = 4; i < 8; i++) {
+        window.CWWCore.addOrUpdatePlayer(state, `extra${i}`, `長い参加者名${i}`);
+        for (let week = 1; week <= 6; week++) state.logs.push({ id: `extra${i}-${week}`, week, playerId: `extra${i}`, playerName: `長い参加者名${i}`, word: '長いワードも省略せずに比較' });
+      }
+      state.week = 6;
+      window.pushRoom(state);
+      window.CWWPresentation.complete();
+    });
+    await expect(log.locator('.log-row')).toHaveCount(8);
+    expect(await log.evaluate(el => el.scrollHeight <= el.clientHeight + 1)).toBe(true);
+    expect(await log.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await log.evaluate(el => { el.scrollLeft = el.scrollWidth; });
+    expect(await log.evaluate(el => el.scrollLeft)).toBeGreaterThan(0);
+    await screenshot(page, `comparison-eight-${prefix}`);
+  });
+}

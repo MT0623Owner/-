@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>制約ワードウルフ</title>
   <meta name="description" content="スマホでQRコードや参加URLを開いて遊べる、制約ワードウルフ。3人以上で部屋を作り、お題・制約・投票で人狼を探そう。">
-  <link rel="stylesheet" href="./styles.css?v=1.4.0">
+  <link rel="stylesheet" href="./styles.css?v=1.4.1">
   <script src="./vendor/qrcode.js?v=2.0.4" defer></script>
-  <script src="./game-core.js?v=1.4.0" defer></script>
-  <script src="./presentation.js?v=1.4.0" defer></script>
+  <script src="./game-core.js?v=1.4.1" defer></script>
+  <script src="./presentation.js?v=1.4.1" defer></script>
   <script src="./firebase-config.js" defer></script>
-  <script type="module" src="./room-sync.js?v=1.4.0"></script>
-  <script src="./app.js?v=1.4.0" defer></script>
+  <script type="module" src="./room-sync.js?v=1.4.1"></script>
+  <script src="./app.js?v=1.4.1" defer></script>
 </head>
 <body>
   <main class="app-shell">
@@ -33,7 +33,7 @@
       <div class="hero">
         <div class="eyebrow-row">
           <p class="eyebrow">Master + Room Code</p>
-          <span class="version-label">バージョン 1.4.0</span>
+          <span class="version-label">バージョン 1.4.1</span>
         </div>
         <h1>制約ワードウルフ</h1>
         <p>マスター端末で部屋を作り、参加者はスマホでQRコードを読み取るか、参加URLを開いて参加します。部屋コードからも入室できます。</p>
@@ -95,12 +95,11 @@
       </header>
 
       <button class="button secondary full help-trigger" data-action="help" data-local-control>ルール・自分の役割</button>
-      <div class="room-code-card">
-        <span>部屋コード</span>
-        <strong id="host-room-code">----</strong>
-      </div>
-
       <div class="stack">
+        <div class="room-code-card">
+          <span>部屋コード</span>
+          <strong id="host-room-code">----</strong>
+        </div>
         <section class="panel invite-panel">
           <h2>友だちを招待</h2>
           <p class="muted">スマホのカメラで読み取り、名前を入力して参加してください。</p>
@@ -111,7 +110,7 @@
           <button id="copy-room-link" class="button secondary full">参加URLをコピー</button>
         </section>
         <section id="host-setup-panel" class="panel"></section>
-        <section class="panel">
+        <section class="panel roster-panel">
           <h2>参加者</h2>
           <div id="host-player-list" class="chips"></div>
         </section>
@@ -119,9 +118,10 @@
         <section id="host-participant-panel" class="panel hidden"></section>
         <section id="host-phase-panel" class="panel"></section>
         <section id="host-vote-summary" class="panel hidden"></section>
-        <section class="panel">
+        <section class="panel log-panel">
           <h2>公開ログ</h2>
-          <div id="host-log" class="word-log"></div>
+          <p class="comparison-note muted">左から古い順 · 青緑は最新ワード</p>
+          <div id="host-log" class="word-log" tabindex="0" role="region" aria-label="参加者ごとの公開ワード"></div>
         </section>
       </div>
     </section>
@@ -139,18 +139,18 @@
       </header>
 
       <button class="button secondary full help-trigger" data-action="help" data-local-control>ルール・自分の役割</button>
-      <div id="player-card" class="private-card compact hidden"></div>
-
       <div class="stack">
+        <div id="player-card" class="private-card compact hidden"></div>
         <section id="player-phase-panel" class="panel"></section>
         <section id="player-vote-summary" class="panel hidden"></section>
-        <section class="panel">
+        <section class="panel roster-panel">
           <h2>参加者</h2>
           <div id="player-list" class="chips"></div>
         </section>
-        <section class="panel">
+        <section class="panel log-panel">
           <h2>公開ログ</h2>
-          <div id="player-log" class="word-log"></div>
+          <p class="comparison-note muted">左から古い順 · 青緑は最新ワード</p>
+          <div id="player-log" class="word-log" tabindex="0" role="region" aria-label="参加者ごとの公開ワード"></div>
         </section>
       </div>
     </section>
