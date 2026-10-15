@@ -251,3 +251,121 @@ test('home help is public and leaving a room clears private guidance', async ({ 
   await expect(page.locator('#rules-dialog')).not.toContainText('占い師の遊び方');
   await expect(page.locator('#rules-dialog')).toContainText('ゲームの流れ');
 });
+
+for (const host of [false, true]) {
+  test(`${host ? 'host' : 'player'} thinking readiness waits for eligible players and skips on last tap`, async ({ page }) => {
+    await openRoom(page, { host });
+    const prefix = host ? 'host' : 'player';
+    await page.evaluate(() => {
+      const state = structuredClone(window.testRoom);
+      state.settings.inputSeconds = 180;
+      state.players.p2.suspect = true;
+      window.CWWCore.startWeek(state);
+      window.pushRoom(state);
+    });
+    const button = page.locator(`#${prefix}-complete-thinking`);
+    await button.evaluate(el => { window.thinkingButton = el; });
+    await page.evaluate(() => window.pushRoom(structuredClone(window.testRoom)));
+    expect(await button.evaluate(el => el === window.thinkingButton)).toBe(true);
+    await expect(page.locator('.screen.is-active [data-countdown]:visible')).toHaveCount(1);
+    await expect(page.locator(`#${host ? 'host-participant' : 'player-phase'}-panel`)).toContainText('0 / 2人');
+    await button.click();
+    await expect(button).toHaveText('思考完了済み');
+    await expect(button).toBeDisabled();
+    expect(await page.evaluate(() => window.testRoom.phase)).toBe('think');
+    await page.evaluate(() => {
+      const state = structuredClone(window.testRoom);
+      const other = window.CWWRoom.userId === 'host' ? 'p1' : 'host';
+      window.CWWCore.completeThinking(state, other, state.week, state.thinkEndsAt);
+      window.pushRoom(state);
+    });
+    await expect(page.locator(`#${prefix}-hidden-word`)).toBeVisible();
+    expect(await page.evaluate(() => window.testRoom.thinkEndsAt - Date.now())).toBeGreaterThan(150000);
+  });
+}
+
+test('spectator master and suspects are not offered thinking completion, timers are singular', async ({ page }) => {
+  await openRoom(page, { host: true });
+  await page.evaluate(() => {
+    const state = structuredClone(window.testRoom);
+    delete state.players.host;
+    window.CWWCore.startWeek(state);
+    window.pushRoom(state);
+  });
+  await expect(page.locator('#host-complete-thinking')).toHaveCount(0);
+  await expect(page.locator('.screen.is-active [data-countdown]:visible')).toHaveCount(1);
+  await page.evaluate(() => {
+    const state = structuredClone(window.testRoom);
+    state.players.host = { id: 'host', name: 'host', active: true, suspect: true };
+    window.pushRoom(state);
+  });
+  await expect(page.locator('#host-complete-thinking')).toHaveCount(0);
+  await expect(page.locator('#host-participant-panel')).toContainText('思考完了の対象外');
+  await expect(page.locator('.screen.is-active [data-countdown]:visible')).toHaveCount(1);
+  await page.evaluate(() => {
+    const state = structuredClone(window.testRoom);
+    state.settings.discussionSeconds = 60;
+    window.CWWCore.startDiscussion(state);
+    window.pushRoom(state);
+  });
+  await expect(page.locator('.screen.is-active [data-countdown]:visible')).toHaveCount(1);
+});
+
+test('final accusation is disabled without suspects and explains outcomes before voting', async ({ page }) => {
+  await openRoom(page, { host: true });
+  await page.evaluate(() => {
+    const state = structuredClone(window.testRoom);
+    window.CWWCore.startDiscussion(state);
+    window.pushRoom(state);
+  });
+  await expect(page.locator('#start-final')).toBeDisabled();
+  await expect(page.locator('#start-final')).toHaveText('容疑者による最終告発へ');
+  await expect(page.locator('#start-vote')).toBeEnabled();
+  await page.evaluate(() => {
+    const state = structuredClone(window.testRoom);
+    state.players.host.suspect = true;
+    window.pushRoom(state);
+  });
+  if (await page.locator('#rules-dialog').isVisible()) await page.locator('#close-rules').click();
+  await expect(page.locator('#host-phase-panel')).toContainText('同票は人狼勝利');
+  await page.locator('#start-final').click();
+  await expect(page.locator('#host-participant-panel')).toContainText('それ以外・同票は人狼勝利');
+  await expect(page.locator('#host-participant-panel .vote-option')).toHaveCount(2);
+});
+
+test('mobile text controls avoid small focus text and phase changes release focus without disabling zoom', async ({ page }) => {
+  await openRoom(page, { host: true });
+  for (const field of await page.locator('.screen.is-active input:visible, .screen.is-active select:visible').all()) {
+    expect(await field.evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16);
+  }
+  await page.locator('#host-topic').focus();
+  await page.evaluate(() => {
+    const state = structuredClone(window.testRoom);
+    window.CWWCore.startWeek(state);
+    window.pushRoom(state);
+  });
+  expect(await page.evaluate(() => document.activeElement.matches('input,select,textarea'))).toBe(false);
+  expect(await page.locator('meta[name="viewport"]').getAttribute('content')).not.toMatch(/user-scalable=no|maximum-scale=1/);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('local automatic topics start with seer and expose only the participants own card', async ({ page }) => {
+  await openRoom(page, { host: true });
+  await page.evaluate(() => {
+    const state = structuredClone(window.testRoom);
+    state.players.p3 = { id: 'p3', name: 'p3', active: true };
+    window.pushRoom(state);
+  });
+  await page.locator('#host-topic-mode').selectOption('local');
+  await page.locator('#host-topic-auto').fill('動物');
+  await page.locator('#host-use-seer').check();
+  await page.locator('#host-start').click();
+  await expect(page.locator('#rules-dialog')).toBeVisible();
+  const state = await page.evaluate(() => window.testRoom);
+  expect(state.settings.topic).toBe('動物');
+  expect(state.settings.constraint.length).toBeGreaterThan(0);
+  expect(state.settings.hint.length).toBeGreaterThan(0);
+  expect(state.seerId).not.toBe('');
+  expect(state.players[state.seerId].role).toBe('村人');
+  if (state.players.host.role !== '人狼') await expect(page.locator('#host-player-card')).not.toContainText(state.settings.constraint);
+});

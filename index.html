@@ -5,22 +5,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>制約ワードウルフ</title>
   <meta name="description" content="スマホでQRコードや参加URLを開いて遊べる、制約ワードウルフ。3人以上で部屋を作り、お題・制約・投票で人狼を探そう。">
-  <link rel="stylesheet" href="./styles.css?v=1.3.2">
+  <link rel="stylesheet" href="./styles.css?v=1.4.0">
   <script src="./vendor/qrcode.js?v=2.0.4" defer></script>
-  <script src="./game-core.js?v=1.3.2" defer></script>
+  <script src="./game-core.js?v=1.4.0" defer></script>
+  <script src="./presentation.js?v=1.4.0" defer></script>
   <script src="./firebase-config.js" defer></script>
-  <script type="module" src="./room-sync.js?v=1.3.2"></script>
-  <script src="./app.js?v=1.3.2" defer></script>
+  <script type="module" src="./room-sync.js?v=1.4.0"></script>
+  <script src="./app.js?v=1.4.0" defer></script>
 </head>
 <body>
   <main class="app-shell">
     <div id="toast" class="toast" role="alert" aria-live="polite"></div>
+    <div class="effect-controls" aria-label="この端末の演出設定">
+      <span>演出</span>
+      <button id="effect-sound" class="button ghost small" data-local-control aria-pressed="false">音 OFF</button>
+      <button id="effect-vibration" class="button ghost small" data-local-control aria-pressed="false">振動 OFF</button>
+    </div>
+    <div id="saving-indicator" class="saving-indicator hidden" role="status">送信中…</div>
+    <div id="suspect-indicator" class="suspect-indicator hidden"></div>
+    <aside id="presentation-event" class="presentation-event hidden" aria-label="進行の演出">
+      <h2 id="effect-title" aria-live="polite"></h2>
+      <div id="effect-body"></div>
+      <button id="skip-effect" class="button secondary small" data-local-control>演出をスキップ</button>
+    </aside>
 
     <section id="screen-home" class="screen is-active">
       <div class="hero">
         <div class="eyebrow-row">
           <p class="eyebrow">Master + Room Code</p>
-          <span class="version-label">バージョン 1.3.2</span>
+          <span class="version-label">バージョン 1.4.0</span>
         </div>
         <h1>制約ワードウルフ</h1>
         <p>マスター端末で部屋を作り、参加者はスマホでQRコードを読み取るか、参加URLを開いて参加します。部屋コードからも入室できます。</p>
@@ -58,7 +71,7 @@
         <h2>新ルール</h2>
         <button class="button secondary full" data-action="help" data-local-control>ルール・遊び方</button>
         <ul>
-          <li>各週の開始時、生存者は30秒の思考時間の後、伏せワードを入力します。</li>
+          <li>各週の思考時間は、入力する全員の「思考完了」でスキップできます。制限時間でも伏せ入力へ進みます。</li>
           <li>同じ週内の偶然の被りはセーフです。公開済みワードは次週以降禁止です。</li>
           <li>容疑者はログ入力できませんが、生存者の開示後に声だけで介入できます。</li>
           <li>1週目の通常投票だけ「投票しない」を選べます。</li>
@@ -105,6 +118,7 @@
         <div id="host-player-card" class="private-card compact hidden"></div>
         <section id="host-participant-panel" class="panel hidden"></section>
         <section id="host-phase-panel" class="panel"></section>
+        <section id="host-vote-summary" class="panel hidden"></section>
         <section class="panel">
           <h2>公開ログ</h2>
           <div id="host-log" class="word-log"></div>
@@ -129,6 +143,7 @@
 
       <div class="stack">
         <section id="player-phase-panel" class="panel"></section>
+        <section id="player-vote-summary" class="panel hidden"></section>
         <section class="panel">
           <h2>参加者</h2>
           <div id="player-list" class="chips"></div>
