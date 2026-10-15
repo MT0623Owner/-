@@ -682,6 +682,65 @@ button {
   display: none !important;
 }
 
+/* Presentation effects never own the game clock or input state. */
+.effect-controls { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-bottom: 12px; color: var(--muted); font-size: 12px; }
+.effect-controls button[aria-pressed="true"] { color: #bfdbfe; background: #1e3a5f; }
+.saving-indicator, .suspect-indicator { position: fixed; z-index: 20; right: 12px; padding: 7px 11px; border-radius: 8px; font-size: 12px; pointer-events: none; }
+.saving-indicator { bottom: 12px; background: #1e3a5f; color: #dbeafe; }
+.suspect-indicator { bottom: 52px; background: #713f12; color: #fef3c7; border: 1px solid #fbbf24; }
+body[data-week-mood="early"] .app-shell { background: linear-gradient(#111827, #11243a); }
+body[data-week-mood="middle"] .app-shell { background: linear-gradient(#111827, #29203b); }
+body[data-week-mood="final"] .app-shell { background: linear-gradient(#111827, #381b26); }
+.presentation-event { position: fixed; z-index: 30; top: 24%; left: 50%; transform: translateX(-50%); width: min(350px, calc(100vw - 36px)); max-height: 55vh; overflow-y: auto; border: 1px solid #7dd3fc; border-radius: 18px; background: rgba(12, 21, 39, .97); padding: 20px; box-shadow: 0 12px 65px #000a; text-align: center; pointer-events: none; }
+.presentation-event h2 { font-size: 20px; margin: 0 0 14px; overflow-wrap: anywhere; }
+.presentation-event button { pointer-events: auto; margin-top: 16px; }
+.reveal-word { display: block; font-size: clamp(25px, 7vw, 40px); overflow-wrap: anywhere; color: #fef3c7; animation: word-turn .7s ease-out both; }
+.effect-count-row { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.effect-count-row strong { flex-shrink: 0; color: #fde68a; }
+.suspect-spotlight { background: radial-gradient(ellipse at top, #6a421f, #111827 80%); border-color: #fbbf24; }
+.suspect-stamp { border: 2px solid #fbbf24; border-radius: 6px; padding: 12px; color: #fde68a; font-weight: 900; }
+.word-history { display: grid; gap: 7px; }
+.previous-word { font-size: 13px; color: #a3aec1; }
+.latest-word { display: block; font-size: 20px; font-weight: 800; color: #f8fafc; }
+.suspect-log .log-row { grid-template-columns: 1fr; border-color: #a16207; }
+.suspect-log .latest-word { font-size: 25px; }
+.countdown.urgent { color: #fde68a; border-color: #f59e0b; animation: timer-pulse 1.2s ease-in-out infinite; }
+.countdown.danger { color: #fecaca; border-color: #ef4444; }
+.private-card[data-role="人狼"] { border: 2px solid #ef4444; background: #fff1f2; }
+.private-card[data-role="占い師"] { border: 2px solid #a78bfa; }
+.private-card[data-role="占い師"]::before { content: "占い師に覚醒"; display: block; color: #6d28d9; font-weight: 900; margin-bottom: 10px; }
+.seer-awakening-title::after { content: "占い師に覚醒"; display: block; color: #c4b5fd; font-size: 13px; margin-top: 6px; }
+.fx-flip { animation: card-turn .65s ease-out; }
+.fx-wolf { animation: card-turn .6s ease-out, wolf-shiver .35s .6s; }
+.fx-awaken { animation: seer-light 1s ease-out; }
+.fx-word { animation: word-turn .65s ease-out; }
+.fx-result { animation: card-turn .55s ease-out both; animation-delay: var(--reveal-delay, 0ms); }
+.result-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 14px 0; }
+.result-reveal-card { border: 1px solid #64748b; background: #172033; border-radius: 12px; padding: 16px; overflow-wrap: anywhere; }
+.result-reveal-card strong { color: #e2e8f0; }
+.timeline-week { border-left: 2px solid #475569; padding-left: 12px; margin: 20px 0; }
+.review-word { display: grid; grid-template-columns: 1fr; gap: 4px; width: 100%; border: 1px solid #475569; border-radius: 8px; background: #172033; color: #e2e8f0; text-align: left; padding: 10px; margin: 8px 0; overflow-wrap: anywhere; }
+.review-word strong { font-size: 20px; }
+.review-word[data-assessment="1"] { border-color: #34d399; background: #12382d; }
+.review-word[data-assessment="2"] { border-color: #fb7185; background: #431e29; }
+.word-history [data-assessment="1"] { color: #6ee7b7; border-left: 3px solid #34d399; padding-left: 8px; }
+.word-history [data-assessment="2"] { color: #fda4af; border-left: 3px solid #fb7185; padding-left: 8px; }
+.result-reveal-card .role-villager { color: #93c5fd; }
+.result-reveal-card .role-wolf { color: #fda4af; }
+.result-reveal-card .role-seer { color: #c4b5fd; }
+.review-label { color: #cbd5e1; }
+body.accusation-scene .app-shell { background: #090b16; }
+.accusation-panel { border: 1px solid #a78bfa; background: radial-gradient(ellipse at top, #2a1f43, #111827 80%); box-shadow: 0 0 35px #6d28d933; }
+.accusation-heading { color: #ddd6fe; font-size: 20px; font-weight: 900; }
+@keyframes card-turn { from { transform: perspective(700px) rotateY(75deg); opacity: .25; } to { transform: perspective(700px) rotateY(0); opacity: 1; } }
+@keyframes word-turn { 0%, 35% { transform: perspective(500px) rotateX(80deg) scale(.8); opacity: .1; } 100% { transform: none; opacity: 1; } }
+@keyframes wolf-shiver { 25% { transform: translateX(-2px); } 75% { transform: translateX(2px); } }
+@keyframes seer-light { 0%, 100% { box-shadow: 0 0 0 transparent; } 45% { box-shadow: 0 0 40px #a78bfa; } }
+@keyframes timer-pulse { 50% { box-shadow: 0 0 12px #f59e0b66; } }
+@media (prefers-reduced-motion: reduce) {
+  .fx-flip, .fx-wolf, .fx-awaken, .fx-word, .fx-result, .reveal-word, .countdown.urgent { animation: none !important; transform: none !important; }
+}
+
 .help-trigger {
   margin-bottom: 16px;
 }

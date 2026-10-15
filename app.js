@@ -32,6 +32,7 @@
   async function init() {
     Room = await waitForRoomApi();
     bindStaticEvents();
+    window.CWWPresentation.init();
     bindLifecycleEvents();
     renderConfigState();
     setInterval(tick, 500);
@@ -54,12 +55,13 @@
     $("#resume-room-button").addEventListener("click", resumeSavedSession);
     $("#forget-room-button").addEventListener("click", forgetSavedSession);
     $("#copy-room-link").addEventListener("click", copyRoomLink);
-    $("#close-rules").addEventListener("click", () => $("#rules-dialog").close());
+    $("#close-rules").addEventListener("click", () => { window.CWWPresentation.complete(); $("#rules-dialog").close(); });
     document.body.addEventListener("click", event => {
       const action = event.target.closest("[data-action]")?.dataset.action;
       if (action === "leave") leaveRoom();
       if (action === "sync") recoverRoomConnection();
       if (action === "help") openRulesHelp();
+      if (action === "finish-effects") window.CWWPresentation.complete();
     });
   }
 
@@ -250,6 +252,7 @@
   }
 
   function leaveRoom(clearUrl = true) {
+    window.CWWPresentation.reset();
     $("#rules-dialog").close();
     lastHelpRole = "";
     lastHelpSuspect = false;
@@ -336,6 +339,7 @@
     if (mode === "host") renderHost();
     if (mode === "player") renderPlayer();
     updateRulesHelp();
+    window.CWWPresentation.update(presentationView());
     renderBusyState();
     updateWakeLock();
   }
@@ -348,6 +352,27 @@
       suspect: Boolean(me?.active !== false && me?.suspect),
       master: mode === "host"
     };
+  }
+
+  function presentationView() {
+    const me = room.players[Room.userId];
+    return {
+      code: roomCode, host: mode === "host", phase: room.phase, week: room.week,
+      maxWeeks: room.settings.maxWeeks,
+      me: { role: me?.role || "", suspect: Boolean(me?.suspect) },
+      suspects: Core.suspectPlayers(room).map(player => player.id),
+      logs: (room.logs || []).map(({ id, week, playerId, playerName, word }) => ({ id, week, playerId, playerName, word })),
+      voteHistory: (room.voteHistory || []).map(({ week, final, result, votes }) => ({ week, final, result, votes: votes.map(({ targetId, targetName }) => ({ targetId, targetName })) }))
+    };
+  }
+
+  function resultPresentation() {
+    if (room.phase !== Core.PHASES.RESULT) return "";
+    return window.CWWPresentation.results({
+      constraint: room.settings.constraint,
+      players: Core.activeRoster(room.players).sort((a, b) => a.joinedAt - b.joinedAt || a.id.localeCompare(b.id)).map(({ id, name, role }) => ({ id, name, role })),
+      logs: presentationView().logs
+    });
   }
 
   function openRulesHelp() {
@@ -873,7 +898,7 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
       return;
     }
     if (room.phase === Core.PHASES.RESULT) {
-      panel.innerHTML = `
+      const html = `
         <h2>結果</h2>
         <p class="${room.winner === "villager" ? "role-villager" : "role-wolf"}">${room.winner === "villager" ? "村人陣営の勝ち" : "人狼陣営の勝ち"}</p>
         <p>${escapeHtml(room.reason)}</p>
@@ -883,7 +908,11 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
           ${room.settings.useSeer ? `<div><dt>ヒント</dt><dd>${escapeHtml(room.settings.hint)}</dd></div>` : ""}
         </div>
         <button id="back-lobby" class="button primary full">同じ部屋で新規ゲーム</button>
+        ${resultPresentation()}
       `;
+      if (panel.dataset.resultContent === html && panel.querySelector("#back-lobby")) return;
+      panel.innerHTML = html;
+      panel.dataset.resultContent = html;
       $("#back-lobby").addEventListener("click", () => {
         hostDraftSettings = null;
         mutate(state => {
@@ -935,7 +964,7 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
     }
     const privateCard = Core.privateCard(room, me.id);
     card.classList.remove("hidden");
-    card.innerHTML = `
+    const html = `
       <p class="card-label">お題</p>
       <strong class="card-topic">${escapeHtml(privateCard.topic)}</strong>
       <div class="card-divider"></div>
@@ -945,6 +974,8 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
       ${room.settings.useSeer ? `<p class="card-note">全員共通：ゲーム終了まで、占い師の名乗り・偽名乗りは禁止です。占い師はヒントを言い換えて教えることもできませんが、自分の気づきとして推理を話せます。</p>` : ""}
       ${privateCard.role === Core.ROLES.SEER ? `<p class="card-note">この役職とヒントは自分だけの秘密です。ヒントをワード選びや投票に使い、話し合いでは公開ワードを根拠に推理を伝えてください。容疑者になっても、このルールは同じです。</p>` : ""}
     `;
+    if (card.dataset.content !== html) { card.innerHTML = html; card.dataset.content = html; }
+    card.dataset.role = privateCard.role;
   }
 
   function renderPlayerPhase(me) {
@@ -986,7 +1017,7 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
     }
     if (room.phase === Core.PHASES.INPUT) {
       if (me.suspect) {
-        panel.innerHTML = `<h2>${room.week}週目: 伏せ入力</h2><p class="muted">あなたは容疑者です。伏せ入力はできません。</p>`;
+        panel.innerHTML = `<h2>${room.week}週目: 推理の時間</h2><p class="muted">あなたは容疑者です。入力はせず、下の公開ワードを見比べて人狼を探してください。開示後の話し合いと最終告発に参加できます。</p>`;
         return;
       }
       const submitted = room.submissions?.[me.id];
@@ -1038,7 +1069,11 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
       return;
     }
     if (room.phase === Core.PHASES.RESULT) {
-      panel.innerHTML = renderResult();
+      const html = renderResult();
+      if (panel.dataset.resultContent !== html || !panel.querySelector(".result-reveal")) {
+        panel.innerHTML = html;
+        panel.dataset.resultContent = html;
+      }
     }
   }
 
@@ -1053,17 +1088,21 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
       panel.innerHTML = `<h2>投票済み</h2><p class="muted">全員の投票を待っています。</p>`;
       return;
     }
-    const candidates = Core.voteCandidates(room).filter(player => room.phase === Core.PHASES.FINAL_VOTE || player.id !== me.id);
+    const candidates = Core.voteCandidates(room).filter(player => room.phase === Core.PHASES.FINAL_VOTE || player.id !== me.id).sort((a, b) => a.joinedAt - b.joinedAt || a.id.localeCompare(b.id));
     const skipButton = Core.canSkipVote(room)
       ? `<button class="vote-option skip" data-target="${Core.SKIP_VOTE}">投票しない（スキップ）</button>`
       : "";
-    panel.innerHTML = `
+    const html = `
       <h2>${room.phase === Core.PHASES.FINAL_VOTE ? "最終解決" : "通常投票"}</h2>
+      ${room.phase === Core.PHASES.FINAL_VOTE && me.suspect ? `<p class="accusation-heading">あなたの告発が、結末を決める</p>` : ""}
       <div class="vote-options">
         ${candidates.map(player => `<button class="vote-option" data-target="${player.id}">${escapeHtml(player.name)} に投票</button>`).join("")}
         ${skipButton}
       </div>
     `;
+    if (panel.dataset.voteContent === html && panel.querySelector("[data-target]")) return;
+    panel.innerHTML = html;
+    panel.dataset.voteContent = html;
     panel.querySelectorAll("[data-target]").forEach(button => {
       button.addEventListener("click", () => mutate(state => Core.castVote(state, me.id, button.dataset.target)));
     });
@@ -1125,6 +1164,7 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
       const left = Math.max(0, Math.ceil((end - Date.now()) / 1000));
       el.textContent = `${left}秒`;
       el.classList.toggle("danger", left <= 5);
+      el.classList.toggle("urgent", left > 0 && left <= 10);
       const panel = el.closest(".panel");
       panel?.querySelectorAll("[data-warning-message]").forEach(message => {
         message.classList.toggle("hidden", left > 0);
@@ -1153,6 +1193,7 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
   }
 
   function renderBusyState() {
+    $("#saving-indicator").classList.toggle("hidden", !busy);
     document.querySelector(".app-shell").setAttribute("aria-busy", String(busy));
     document.querySelectorAll("button:not([data-local-control])").forEach(button => {
       if (busy && !button.disabled) {
@@ -1167,11 +1208,12 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
 
   function renderPlayers(selector, revealRoles) {
     const result = room.phase === Core.PHASES.RESULT;
-    $(selector).innerHTML = Core.activeRoster(room.players).map(player => {
+    const html = Core.activeRoster(room.players).sort((a, b) => a.joinedAt - b.joinedAt || a.id.localeCompare(b.id)).map(player => {
       const role = (revealRoles && result) ? ` / ${player.role}` : "";
       const suspect = player.suspect ? " / 容疑者" : "";
       return `<span class="chip ${player.suspect ? "suspect" : ""}">${escapeHtml(player.name)}${escapeHtml(role)}${suspect}</span>`;
     }).join("") || `<span class="muted">まだ参加者がいません。</span>`;
+    if ($(selector).dataset.content !== html) { $(selector).innerHTML = html; $(selector).dataset.content = html; }
   }
 
   function renderLogs(selector) {
@@ -1180,26 +1222,49 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
       $(selector).innerHTML = `<div class="result-item">公開ログはまだありません。</div>`;
       return;
     }
+    const container = $(selector);
+    if (!container.querySelector("[data-log-player]")) container.replaceChildren();
     const grouped = new Map();
     logs.forEach(log => {
       const key = log.playerId || log.playerName;
       if (!grouped.has(key)) grouped.set(key, { name: log.playerName || "不明", words: [] });
-      grouped.get(key).words.push(log.word);
+      grouped.get(key).words.push(log);
     });
     const ordered = [
-      ...Core.activeRoster(room.players)
+      ...Core.activeRoster(room.players).sort((a, b) => a.joinedAt - b.joinedAt || a.id.localeCompare(b.id))
         .filter(player => grouped.has(player.id))
-        .map(player => grouped.get(player.id)),
+        .map(player => ({ ...grouped.get(player.id), id: player.id })),
       ...[...grouped.entries()]
         .filter(([playerId]) => !room.players?.[playerId])
-        .map(([, row]) => row)
+        .map(([id, row]) => ({ ...row, id }))
     ];
-    $(selector).innerHTML = ordered.map(row => `
-      <div class="log-item log-row">
-        <strong>${escapeHtml(row.name)}</strong>
-        <span>${row.words.map(word => escapeHtml(word)).join("／")}</span>
-      </div>
-    `).join("");
+    const kept = new Set();
+    ordered.forEach(row => {
+      let element = [...container.children].find(el => el.dataset.logPlayer === row.id);
+      if (!element) {
+        element = document.createElement("div");
+        element.className = "log-item log-row";
+        element.dataset.logPlayer = row.id;
+        element.innerHTML = "<strong></strong><span class='word-history'></span>";
+        container.append(element);
+      }
+      kept.add(element);
+      element.firstElementChild.textContent = row.name;
+      const words = element.lastElementChild;
+      row.words.forEach((log, i) => {
+        let word = [...words.children].find(el => el.dataset.logId === log.id);
+        if (!word) {
+          word = document.createElement("span");
+          word.dataset.logId = log.id;
+          words.append(word);
+        }
+        word.classList.toggle("latest-word", i === row.words.length - 1);
+        word.classList.toggle("previous-word", i !== row.words.length - 1);
+        word.textContent = `${log.week}週目：${log.word}`;
+      });
+      [...words.children].forEach(el => { if (!row.words.some(log => log.id === el.dataset.logId)) el.remove(); });
+    });
+    [...container.children].forEach(el => { if (!kept.has(el)) el.remove(); });
   }
 
   function renderResult() {
@@ -1212,9 +1277,7 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
         <div><dt>制約</dt><dd>${escapeHtml(room.settings.constraint)}</dd></div>
         ${room.settings.useSeer ? `<div><dt>ヒント</dt><dd>${escapeHtml(room.settings.hint)}</dd></div>` : ""}
       </div>
-      <div class="result-list">
-        ${Core.activeRoster(room.players).map(player => `<div class="result-item two-col"><strong>${escapeHtml(player.name)}</strong><span class="${roleClass(player.role)}">${player.role}${player.suspect ? " / 容疑者" : ""}</span></div>`).join("")}
-      </div>
+      ${resultPresentation()}
     `;
   }
 
