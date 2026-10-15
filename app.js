@@ -1033,12 +1033,14 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
   }
 
   function renderParticipantPhase(panel, me, prefix) {
-    if (room.presentation) { panel.innerHTML = `<h2>演出の確認待ち</h2><p>全員の確認後に進みます。</p><button class="button secondary" data-action="show-effect" data-local-control>投票結果・確認画面を開く</button>`; return; }
     const phaseKey = `${roomCode}:${room.phase}:${room.week}`;
     if (panel.dataset.phaseKey !== phaseKey) {
       delete panel.dataset.markup;
       panel.dataset.phaseKey = phaseKey;
     }
+    // Presentation replaces this panel too. Track it before returning so a
+    // delayed presentation followed by the same thinking round rebuilds its DOM.
+    if (room.presentation) { setPanelMarkup(panel, `<h2>演出の確認待ち</h2><p>全員の確認後に進みます。</p><button class="button secondary" data-action="show-effect" data-local-control>投票結果・確認画面を開く</button>`); return; }
     if (!me) {
       panel.innerHTML = `<h2>入室情報がありません</h2><p class="muted">トップに戻って入り直してください。</p>`;
       return;
