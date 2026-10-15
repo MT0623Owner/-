@@ -11,6 +11,7 @@
   let wakeLock = null;
   let wakeLockRequesting = false;
   let subscriptionGeneration = 0;
+  let roomUpdateCount = 0;
   let lastHelpRole = "";
   let lastHelpSuspect = false;
   let helpContentKey = "";
@@ -63,6 +64,7 @@
       if (action === "close-invite") $("#invite-dialog").close();
       if (action === "leave") leaveRoom();
       if (action === "sync") recoverRoomConnection();
+      if (action === "show-effect") window.CWWPresentation.reopen();
       if (action === "reload") location.reload();
       if (action === "help") {
         // Safari does not focus buttons on pointer clicks. Give the dialog a
@@ -254,6 +256,7 @@
         leaveRoom(false);
         return;
       }
+      roomUpdateCount++;
       room = next;
       renderRoom();
       updateWakeLock();
@@ -292,26 +295,35 @@
     syncingRoom = true;
     const code = roomCode;
     const generation = subscriptionGeneration;
+    const updateCount = roomUpdateCount;
+    $("#effect-network").textContent = "最新の状態を確認中…";
     try {
       const latest = await withReadTimeout(async () => {
         await Room.ready();
         return Room.getRoom(code);
       });
       if (generation !== subscriptionGeneration || code !== roomCode || !mode) return;
+      if (updateCount !== roomUpdateCount) { $("#effect-network").textContent = ""; return; }
       if (!latest) {
         showToast("部屋が見つからなくなりました。");
         clearSavedSession();
         leaveRoom(false);
         return;
       }
+      roomUpdateCount++;
       room = latest;
       renderRoom();
+      $("#effect-network").textContent = "";
       if (unsubscribe) unsubscribe();
       unsubscribe = null;
       subscribe(roomCode);
       updateWakeLock();
     } catch (error) {
-      if (generation === subscriptionGeneration) showToast(`接続の復帰に失敗しました。通信状態を確認してください。${error.message ? ` (${error.message})` : ""}`);
+      if (generation === subscriptionGeneration) {
+        const message = `接続の復帰に失敗しました。通信状態を確認してください。${error.message ? ` (${error.message})` : ""}`;
+        showToast(message);
+        $("#effect-network").textContent = message;
+      }
     } finally {
       syncingRoom = false;
     }
@@ -878,7 +890,7 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
 
   function renderHostPhase() {
     const panel = $("#host-phase-panel");
-    if (room.presentation) { panel.innerHTML = `<h2>演出の確認待ち</h2><p>全員の確認後に進みます。タイマーは停止中です。</p>`; return; }
+    if (room.presentation) { panel.innerHTML = `<h2>演出の確認待ち</h2><p>全員の確認後に進みます。タイマーは停止中です。</p><button class="button secondary" data-action="show-effect" data-local-control>投票結果・確認画面を開く</button>`; return; }
     const living = Core.livingPlayers(room);
     const suspects = Core.suspectPlayers(room);
     const hostPlaying = room.players[Room.userId]?.active !== false && Boolean(room.players[Room.userId]);
@@ -1021,7 +1033,7 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
   }
 
   function renderParticipantPhase(panel, me, prefix) {
-    if (room.presentation) { panel.innerHTML = `<h2>演出の確認待ち</h2><p>全員の確認後に進みます。</p>`; return; }
+    if (room.presentation) { panel.innerHTML = `<h2>演出の確認待ち</h2><p>全員の確認後に進みます。</p><button class="button secondary" data-action="show-effect" data-local-control>投票結果・確認画面を開く</button>`; return; }
     const phaseKey = `${roomCode}:${room.phase}:${room.week}`;
     if (panel.dataset.phaseKey !== phaseKey) {
       delete panel.dataset.markup;
@@ -1229,7 +1241,18 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
 
   async function mutate(mutator) {
     await run(async () => {
-      await Room.mutateRoom(roomCode, mutator);
+      const code = roomCode;
+      const generation = subscriptionGeneration;
+      const updateCount = roomUpdateCount;
+      const latest = await Room.mutateRoom(code, mutator);
+      // Even a no-op transaction reads current server state. A delayed listener
+      // must not trap this client in a presentation the master already released.
+      // Conversely, never overwrite a newer snapshot or a different session.
+      if (latest && mode && code === roomCode && generation === subscriptionGeneration && updateCount === roomUpdateCount) {
+        roomUpdateCount++;
+        room = latest;
+        renderRoom();
+      }
     });
   }
 

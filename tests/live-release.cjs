@@ -83,7 +83,6 @@ const output = process.env.CWW_CAPTURE_DIR || 'test-results/live-release';
       const page = byId.get(id);
       await dismiss(page);
       await page.locator(`#${prefix(page)}-reveal-word`).click();
-      await acknowledgePresentation();
     }
     await expect.poll(async () => (await state()).phase).toMatch(/discussion|suspectTalk/);
     if ((await state()).phase === 'suspectTalk') {

@@ -40,7 +40,8 @@ test('creating a free code commits the new room', async () => {
 
 test('a stale phase transition does not write unchanged room data', async () => {
   const sync = loadSync({ roomCode: 'TEST', phase: 'reveal' });
-  await sync.api.mutateRoom('TEST', state => state);
+  const current = await sync.api.mutateRoom('TEST', state => state);
+  assert.equal(current.phase, 'reveal');
   assert.equal(sync.writes(), 0);
   await sync.api.mutateRoom('TEST', state => ({ ...state, phase: 'discussion' }));
   assert.equal(sync.writes(), 1);

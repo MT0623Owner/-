@@ -436,13 +436,12 @@ for (const host of [false, true]) test(`shared effect waits for acknowledgement,
   await openRoom(page, { host, input: true });
   await page.evaluate(() => {
     const C = window.CWWCore, s = structuredClone(window.testRoom);
-    for (const id of ['host', 'p1', 'p2']) C.submitHiddenWord(s, id, id);
-    C.startReveal(s);
-    C.revealCurrentWord(s, s.revealOrder[0]);
+    C.startVote(s);
+    for (const id of ['host', 'p1', 'p2']) C.castVote(s, id, C.SKIP_VOTE);
+    C.resolveVotes(s);
     window.pushRoom(s);
   });
   await expect(page.locator('#presentation-event')).toBeVisible();
-  await page.keyboard.press('Escape');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.evaluate(() => window.CWWPresentation.complete());
   await page.waitForTimeout(5500);
@@ -461,5 +460,88 @@ for (const host of [false, true]) test(`shared effect waits for acknowledgement,
     window.pushRoom(s);
   });
   await expect(page.locator('#presentation-event')).not.toBeVisible();
-  expect(await page.evaluate(() => window.testRoom.phase)).toBe('reveal');
+  expect(await page.evaluate(() => window.testRoom.phase)).toBe('think');
+});
+
+async function pendingVote(page) {
+  await openRoom(page, { input: true });
+  await page.evaluate(() => {
+    const C = window.CWWCore, s = structuredClone(window.testRoom);
+    C.startVote(s);
+    for (const id of ['host', 'p1', 'p2']) C.castVote(s, id, C.SKIP_VOTE);
+    C.resolveVotes(s);
+    window.pushRoom(s);
+  });
+  await expect(page.locator('#presentation-event')).toBeVisible();
+}
+
+test('stale confirmation consumes the returned current state without another snapshot', async ({ page }) => {
+  await pendingVote(page);
+  await page.evaluate(() => {
+    const s = structuredClone(window.testRoom);
+    window.CWWCore.forcePresentation(s, 'host', s.presentation.id);
+    window.testRoom = s; // server advanced; subscriber notification is delayed
+    window.CWWRoom.mutateRoom = async (_code, mutate) => mutate(structuredClone(window.testRoom));
+  });
+  await page.locator('#skip-effect').click();
+  await expect(page.locator('#presentation-event')).not.toBeVisible();
+  await expect(page.locator('#player-complete-thinking')).toBeVisible();
+});
+
+test('presentation recovery and local close stay accessible during a stalled write', async ({ page }) => {
+  await pendingVote(page);
+  await page.evaluate(() => { window.CWWRoom.mutateRoom = () => new Promise(() => {}); });
+  await page.locator('#skip-effect').click();
+  await expect(page.locator('#effect-sync')).toBeEnabled();
+  await page.locator('#effect-close').click();
+  await expect(page.locator('#presentation-event')).not.toBeVisible();
+  expect(await page.evaluate(() => window.testRoom.presentation.ready.p1)).toBeUndefined();
+  await page.evaluate(() => window.pushRoom(structuredClone(window.testRoom)));
+  await expect(page.locator('#presentation-event')).not.toBeVisible();
+  await page.locator('[data-action="show-effect"]').click();
+  await expect(page.locator('#presentation-event')).toBeVisible();
+  await page.evaluate(() => {
+    const s = structuredClone(window.testRoom);
+    window.CWWCore.forcePresentation(s, 'host', s.presentation.id);
+    window.testRoom = s;
+  });
+  await page.locator('#effect-sync').click();
+  await expect(page.locator('#presentation-event')).not.toBeVisible();
+});
+
+test('a late transaction result cannot restore a presentation after a newer snapshot', async ({ page }) => {
+  await pendingVote(page);
+  await page.evaluate(() => {
+    window.CWWRoom.mutateRoom = async (_code, mutate) => {
+      const stale = mutate(structuredClone(window.testRoom));
+      await new Promise(resolve => { window.finishOldConfirmation = resolve; });
+      return stale;
+    };
+  });
+  await page.locator('#skip-effect').click();
+  await page.evaluate(() => {
+    const fresh = structuredClone(window.testRoom);
+    window.CWWCore.forcePresentation(fresh, 'host', fresh.presentation.id);
+    window.pushRoom(fresh);
+    window.finishOldConfirmation();
+  });
+  await expect(page.locator('#presentation-event')).not.toBeVisible();
+  await expect(page.locator('#player-complete-thinking')).toBeEnabled();
+});
+
+test('word reveals require no confirmation and do not make the game screen inert', async ({ page }) => {
+  await openRoom(page, { input: true });
+  await page.evaluate(() => {
+    const C = window.CWWCore, s = structuredClone(window.testRoom);
+    for (const id of ['host', 'p1', 'p2']) C.submitHiddenWord(s, id, id);
+    C.startReveal(s);
+    C.revealCurrentWord(s, 'host');
+    window.pushRoom(s);
+  });
+  await expect(page.locator('#presentation-event')).toBeVisible();
+  expect(await page.locator('#presentation-event').evaluate(el => el.matches(':modal'))).toBe(false);
+  expect(await page.evaluate(() => window.testRoom.presentation)).toBeNull();
+  await expect(page.locator('#player-reveal-word')).toBeEnabled();
+  await expect(page.locator('#skip-effect')).toHaveText('閉じる');
+  await expect(page.locator('#presentation-event')).not.toBeVisible({ timeout: 3500 });
 });

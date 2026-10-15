@@ -265,11 +265,11 @@ test('ten-second urgency, stable vote targets and new game cleanup', async ({ pa
   await expect(page.locator('#presentation-event')).not.toBeVisible();
 });
 
-test('reveals leave reading time, queue later words and skip clears the queue', async ({ page }) => {
+test('short word effects queue later words and closing clears the queue', async ({ page }) => {
   await openGame(page);
   await page.clock.install();
   await publishWord(page);
-  await page.clock.runFor(3000);
+  await page.clock.runFor(1000);
   await expect(page.locator('#presentation-event')).toBeVisible();
   await page.evaluate(() => {
     const state = structuredClone(window.testRoom);
@@ -277,7 +277,7 @@ test('reveals leave reading time, queue later words and skip clears the queue', 
     window.pushRoom(state);
   });
   await expect(page.locator('#effect-body')).toHaveText('ライオン');
-  await page.clock.runFor(2200);
+  await page.clock.runFor(1200);
   await expect(page.locator('#effect-body')).toHaveText('キリン');
   await publishWord(page);
   await page.locator('#skip-effect').click();
