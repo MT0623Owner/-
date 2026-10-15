@@ -19,13 +19,6 @@
   const SESSION_KEY = "cww.lastSession.v1";
   const GEMINI_API_KEY = "cww.geminiApiKey.session";
   const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
-  const GEMINI_MODEL_FALLBACKS = [
-    DEFAULT_GEMINI_MODEL,
-    "gemini-3.5-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-flash-latest"
-  ];
-  const GEMINI_TIMEOUT_MS = 15000;
   const CONNECTION_WAIT_MS = 15000;
   const $ = selector => document.querySelector(selector);
 
@@ -600,7 +593,11 @@
         <label class="field-label">お題指定（任意）
           <input id="host-external-topic" class="input" value="${escapeHtml(settings.topic)}" placeholder="空ならAIがお題も生成">
         </label>
-        <div class="notice soft">APIキーはこの端末内だけで使い、部屋データには保存しません。失敗時はローカル生成へフォールバックします。</div>
+        <button id="forget-ai-key" class="button ghost small" data-local-control>保存したAPIキーを消す</button>
+        <p class="muted">キーはこのタブのセッション内に保存し、Googleへの生成リクエストにだけ送ります。部屋データには保存しません。<a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer">APIキーを取得</a></p>
+        <div class="notice soft">生成内容は役職に応じて配布します。マスターにも制約のプレビューは出しません。1回の開始で最大2回・合計30秒まで生成します。利用枠によってAPI料金がかかります。</div>
+        <p id="ai-generation-status" role="status" aria-live="polite"></p>
+        <button id="ai-fallback" class="button secondary full hidden">AIを使わずローカル候補に切り替える</button>
       </div>
       <div id="manual-topic-fields" class="${settings.topicMode === "manual" ? "" : "hidden"}">
         <label class="field-label">お題
@@ -637,6 +634,14 @@
     });
     $("#host-gemini-api-key")?.addEventListener("input", () => {
       storageValue("sessionStorage", "setItem", GEMINI_API_KEY, $("#host-gemini-api-key").value.trim());
+    });
+    $("#forget-ai-key").addEventListener("click", () => {
+      storageValue("sessionStorage", "removeItem", GEMINI_API_KEY);
+      $("#host-gemini-api-key").value = "";
+    });
+    $("#ai-fallback").addEventListener("click", () => {
+      hostDraftSettings = Core.normalizeSettings({ ...collectHostDraft(false), topicMode: "local", topic: "" });
+      renderHostSetup(true);
     });
     $("#host-template").addEventListener("click", () => {
       const item = Core.TEMPLATES[Math.floor(Math.random() * Core.TEMPLATES.length)];
@@ -675,8 +680,17 @@
   async function hostStartGame() {
     await run(async () => {
       const draft = collectHostDraft();
+      const code = roomCode;
+      const generation = subscriptionGeneration;
+      const players = structuredClone(room.players);
+      if (draft.hostParticipates) Core.addOrUpdatePlayer({ players }, room.hostId, draft.hostName);
+      else delete players[room.hostId];
+      const validation = Core.validateStart({ ...draft, topicMode: "local" }, players);
+      if (!validation.ok) throw new Error(validation.errors.join("\n"));
       const topicResult = await resolveTopicSettings(draft);
-      await Room.mutateRoom(roomCode, state => {
+      if (code !== roomCode || generation !== subscriptionGeneration || mode !== "host") throw new Error("部屋の接続が変わったため開始を中止しました。もう一度お試しください。");
+      await Room.mutateRoom(code, state => {
+        if (state.phase !== Core.PHASES.LOBBY) throw new Error("すでにゲームが始まっています。");
         state.settings = topicResult.settings;
         if (topicResult.settings.hostParticipates) {
           Core.addOrUpdatePlayer(state, state.hostId, topicResult.settings.hostName);
@@ -693,185 +707,19 @@
   async function resolveTopicSettings(settings) {
     if (settings.topicMode !== "external") return { settings, notice: "" };
     const apiKey = ($("#host-gemini-api-key")?.value || storageValue("sessionStorage", "getItem", GEMINI_API_KEY) || "").trim();
-    if (!apiKey) throw new Error("外部AI生成にはGemini APIキーを入力してください。");
-
+    $("#ai-fallback").classList.add("hidden");
     try {
-      const generated = await generateGeminiTopicSet({
-        apiKey,
-        model: settings.aiModel,
-        level: settings.topicLevel,
-        preferredTopic: settings.topic
+      const generated = await window.CWWAI.generate({
+        apiKey, model: settings.aiModel, level: settings.topicLevel,
+        preferredTopic: settings.topic, maxWeeks: settings.maxWeeks, wolfCount: settings.wolfCount,
+        onProgress: message => { if ($("#ai-generation-status")) $("#ai-generation-status").textContent = message; }
       });
-      const requestedModel = normalizeGeminiModelName(settings.aiModel);
-      return {
-        settings: Core.normalizeSettings({
-          ...settings,
-          topicMode: "external",
-          autoTopic: true,
-          aiModel: generated.modelUsed,
-          ...generated.topicSet
-        }),
-        notice: generated.modelUsed !== requestedModel
-          ? `指定モデルが使えなかったため、${generated.modelUsed}で外部AI生成しました。`
-          : ""
-      };
+      return { settings: Core.normalizeSettings({ ...settings, ...generated.topicSet, aiModel: generated.modelUsed }), notice: "AI生成のお題で開始しました。" };
     } catch (error) {
-      const fallback = Core.generateTopicSet(Math.random, settings.topicLevel, settings.topic);
-      return {
-        settings: Core.normalizeSettings({
-          ...settings,
-          topicMode: "external",
-          autoTopic: true,
-          ...fallback
-        }),
-        notice: `外部AI生成に失敗したため、ローカル生成に切り替えました。${error.message ? ` (${error.message})` : ""}`
-      };
-    }
-  }
-
-  async function generateGeminiTopicSet({ apiKey, model, level, preferredTopic }) {
-    const modelErrors = [];
-    for (const candidate of geminiModelCandidates(model)) {
-      try {
-        return {
-          topicSet: await requestGeminiTopicSet({ apiKey, model: candidate, level, preferredTopic }),
-          modelUsed: candidate
-        };
-      } catch (error) {
-        if (!isGeminiModelUnavailableError(error)) throw error;
-        modelErrors.push(`${candidate}: ${error.message}`);
-      }
-    }
-    throw new Error(`利用可能なGeminiモデルが見つかりませんでした。${modelErrors.join(" / ")}`);
-  }
-
-  async function requestGeminiTopicSet({ apiKey, model, level, preferredTopic }) {
-    const cleanModel = normalizeGeminiModelName(model);
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(cleanModel)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
-    const levelText = {
-      1: "レベル1: 普通。誰でも答えやすい一般カテゴリと、分かりやすい制約。",
-      2: "レベル2: ちょい知識必要。偉人、国、映画、ゲームなど、少し知識があると楽しいカテゴリ。",
-      3: "レベル3: マニアック。特定作品、シリーズ、専門ジャンルなど、知っている人向けのカテゴリ。"
-    }[level] || "レベル1: 普通。";
-    const preferred = String(preferredTopic || "").trim();
-    const userPrompt = `
-生成レベル: ${levelText}
-${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候補がゲームに適していれば topic として使い、制約とヒントを作ってください。適さない場合は別のお題を生成してください。` : "topic も含めて生成してください。"}
-
-必ず JSON オブジェクトだけを返してください。
-キーは topic, constraint, hint の3つだけです。
-`;
-    try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: geminiSystemPrompt() }]
-          },
-          contents: [{
-            role: "user",
-            parts: [{ text: userPrompt }]
-          }],
-          generationConfig: {
-            temperature: 0.95,
-            topP: 0.95,
-            candidateCount: 1,
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: "object",
-              properties: {
-                topic: { type: "string" },
-                constraint: { type: "string" },
-                hint: { type: "string" }
-              },
-              required: ["topic", "constraint", "hint"],
-              propertyOrdering: ["topic", "constraint", "hint"]
-            }
-          }
-        })
-      });
-
-      const data = await response.json().catch(() => null);
-      if (!response.ok) {
-        const error = new Error(data?.error?.message || `Gemini API ${response.status}`);
-        error.status = response.status;
-        throw error;
-      }
-      const text = (data?.candidates?.[0]?.content?.parts || [])
-        .map(part => part.text || "")
-        .join("")
-        .trim();
-      return parseGeneratedTopicSet(text || JSON.stringify(data));
-    } catch (error) {
-      if (error?.name === "AbortError") throw new Error("Gemini APIがタイムアウトしました。");
+      if ($("#ai-generation-status")) $("#ai-generation-status").textContent = error.message;
+      $("#ai-fallback")?.classList.remove("hidden");
       throw error;
-    } finally {
-      clearTimeout(timeout);
     }
-  }
-
-  function normalizeGeminiModelName(model) {
-    if (Core.normalizeAiModel) return Core.normalizeAiModel(model);
-    const value = String(model || DEFAULT_GEMINI_MODEL).trim().replace(/^models\//, "");
-    if (!value || value === "gemini-2.5-flash-preview-09-2025") return DEFAULT_GEMINI_MODEL;
-    return value;
-  }
-
-  function geminiModelCandidates(model) {
-    return [...new Set([normalizeGeminiModelName(model), ...GEMINI_MODEL_FALLBACKS])];
-  }
-
-  function isGeminiModelUnavailableError(error) {
-    const message = String(error?.message || "").toLowerCase();
-    return error?.status === 404
-      || message.includes("not found")
-      || message.includes("not supported for generatecontent");
-  }
-
-  function geminiSystemPrompt() {
-    return [
-      "あなたは『制約ワードウルフ』のお題セット生成エンジンです。",
-      "出力は必ずJSONオブジェクトのみ。Markdown、説明文、コードブロックは禁止。",
-      "topic: プレイヤー全員がワードを考えるベースになる、広い認知度を持つ一般カテゴリ名。単語一語の名詞。余計な接頭辞は禁止。",
-      "constraint: 人狼だけに課される条件。広すぎず狭すぎず、複数ログから違和感が見える程度。場所、大きさ、価格帯、色、素材、所属、時代、用途など具体名詞を絞れる切り口にする。",
-      "hint: 占い師向け。制約そのものを暴露せず、方向性を示す1〜4文字程度の漢字またはカタカナの単語。",
-      "例: {\"topic\":\"動物\",\"constraint\":\"人間が手で抱えられる大きさのもの\",\"hint\":\"大きさ\"}",
-      "例: {\"topic\":\"偉人\",\"constraint\":\"ノーベル賞を受賞している人物\",\"hint\":\"受賞\"}",
-      "例: {\"topic\":\"ワンピースのキャラ\",\"constraint\":\"海賊ではないキャラクター\",\"hint\":\"所属\"}"
-    ].join("\n");
-  }
-
-  function parseGeneratedTopicSet(raw) {
-    let text = String(raw || "").trim();
-    text = text.replace(/```(?:json)?/gi, "").replace(/```/g, "").trim();
-    const first = text.indexOf("{");
-    const last = text.lastIndexOf("}");
-    if (first >= 0 && last > first) text = text.slice(first, last + 1);
-    const parsed = JSON.parse(text);
-    const topic = cleanGeneratedValue(findGeneratedValue(parsed, ["topic", "お題", "おだい", "テーマ", "category"]));
-    const constraint = cleanGeneratedValue(findGeneratedValue(parsed, ["constraint", "制約", "せいやく", "条件", "制限", "制約条件"]));
-    const hint = cleanGeneratedValue(findGeneratedValue(parsed, ["hint", "ヒント", "ひんと", "占い師ヒント"])).replace(/\s+/g, "").slice(0, 8);
-    return Core.sanitizeTopicSet({ topic, constraint, hint });
-  }
-
-  function findGeneratedValue(object, keys) {
-    if (!object || typeof object !== "object") return "";
-    const entries = Object.entries(object);
-    for (const key of keys) {
-      const found = entries.find(([candidate]) => Core.normalizeText(candidate) === Core.normalizeText(key));
-      if (found) return found[1];
-    }
-    return "";
-  }
-
-  function cleanGeneratedValue(value) {
-    return String(value || "")
-      .replace(/^(お題|おだい|テーマ|topic|カテゴリ|category|制約|せいやく|条件|制限|constraint|ヒント|ひんと|hint)[:：\s]+/i, "")
-      .trim();
   }
 
   function renderHostParticipant() {

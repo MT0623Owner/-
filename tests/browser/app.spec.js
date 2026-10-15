@@ -569,3 +569,63 @@ for (const host of [false, true]) test(`thinking panel survives a delayed vote s
   await expect(page.locator(`#${prefix}-complete-thinking`)).toBeDisabled();
   expect(errors).toEqual([]);
 });
+
+const generatedTopic = { topic: '動物', constraint: '水辺や水中で暮らすことが多いもの', hint: '生息地', matchingExamples: ['ペンギン','ビーバー','カワウソ','イルカ','アザラシ','タコ'], otherExamples: ['キリン','ライオン','ラクダ','リス','シマウマ','ウマ'] };
+async function selectAI(page) {
+  await openRoom(page, { host: true });
+  await page.locator('#host-topic-mode').selectOption('external');
+  await page.locator('#host-gemini-api-key').fill('fixture-ai-key');
+}
+
+test('AI starts with validated topics, stores no key or examples and sends the key only in a header', async ({page}) => {
+  const requests = [];
+  await page.route('https://generativelanguage.googleapis.com/**', async route => {
+    requests.push({url:route.request().url(),headers:route.request().headers()});
+    await route.fulfill({json:{candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(generatedTopic)}]}}]}});
+  });
+  await selectAI(page);
+  await page.locator('#host-start').click();
+  await expect(page.locator('#host-phase-panel')).toContainText('役職確認');
+  const state = await page.evaluate(() => window.testRoom);
+  expect(state.settings.topicMode).toBe('external');
+  expect(state.settings.constraint).toBe(generatedTopic.constraint);
+  expect(JSON.stringify(state)).not.toContain('fixture-ai-key');
+  expect(JSON.stringify(state)).not.toContain('matchingExamples');
+  expect(requests).toHaveLength(1);
+  expect(requests[0].url).not.toContain('fixture-ai-key');
+  expect(requests[0].headers['x-goog-api-key']).toBe('fixture-ai-key');
+});
+
+test('AI failure stays in the lobby, offers explicit local fallback and can forget the key', async ({page}) => {
+  await page.route('https://generativelanguage.googleapis.com/**', route => route.fulfill({status:429,json:{error:{message:'fixture-ai-key'}}}));
+  await selectAI(page);
+  await page.locator('#host-start').click();
+  await expect(page.locator('#ai-generation-status')).toContainText('利用上限');
+  expect(await page.evaluate(() => window.testRoom.phase)).toBe('lobby');
+  await expect(page.locator('#toast')).not.toContainText('fixture-ai-key');
+  await page.locator('#forget-ai-key').click();
+  await expect(page.locator('#host-gemini-api-key')).toHaveValue('');
+  expect(await page.evaluate(()=>sessionStorage.getItem('cww.geminiApiKey.session'))).toBeNull();
+  await page.locator('#ai-fallback').click();
+  await expect(page.locator('#host-topic-mode')).toHaveValue('local');
+  expect(await page.evaluate(() => window.testRoom.phase)).toBe('lobby');
+  await page.locator('#host-start').click();
+  await expect(page.locator('#host-phase-panel')).toContainText('役職確認');
+});
+
+test('AI retries invalid content once and does not call API when the roster is insufficient', async ({page}) => {
+  let calls=0;
+  await page.route('https://generativelanguage.googleapis.com/**', route => {
+    calls++;
+    return route.fulfill({json:{candidates:[{content:{parts:[{text:JSON.stringify(calls===1?{...generatedTopic,matchingExamples:[]}:generatedTopic)}]}}]}});
+  });
+  await selectAI(page);
+  await page.evaluate(()=>{const s=structuredClone(window.testRoom); delete s.players.p2; window.pushRoom(s);});
+  await page.locator('#host-start').click();
+  await expect(page.locator('#toast')).toContainText('3人以上');
+  expect(calls).toBe(0);
+  await page.evaluate(()=>{const s=structuredClone(window.testRoom);window.CWWCore.addOrUpdatePlayer(s,'p2','p2');window.pushRoom(s);});
+  await page.locator('#host-start').click();
+  await expect(page.locator('#host-phase-panel')).toContainText('役職確認');
+  expect(calls).toBe(2);
+});
