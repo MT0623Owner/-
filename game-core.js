@@ -602,9 +602,12 @@
     });
     state.revealIndex += 1;
 
-    const next = state.revealIndex < state.revealOrder.length ? "reveal"
-      : suspectPlayers(state).length ? "suspectTalk" : "discussion";
-    return beginPresentation(state, "word", { type: next }, now, { logId: state.logs.at(-1).id });
+    if (state.revealIndex >= state.revealOrder.length) {
+      if (suspectPlayers(state).length) state.phase = PHASES.SUSPECT_TALK;
+      else return startDiscussion(state, now);
+    }
+    state.updatedAt = now;
+    return state;
   }
 
   function startDiscussion(state, now = Date.now()) {

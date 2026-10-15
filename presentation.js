@@ -23,7 +23,8 @@
 
   function init(callbacks = {}) {
     actions = callbacks;
-    document.querySelector("#presentation-event").addEventListener("cancel", e => { if (gate) e.preventDefault(); });
+    document.querySelector("#presentation-event").addEventListener("cancel", e => { e.preventDefault(); dismiss(); });
+    document.querySelector("#effect-close").addEventListener("click", dismiss);
     document.querySelector("#force-effect").addEventListener("click", () => { if (gate) actions.force?.(gate.id); });
     try {
       sound = localStorage.getItem("cww.effects.sound") === "true";
@@ -105,6 +106,19 @@
     });
   }
 
+  function dismiss() {
+    // Closing is local only: it never acknowledges or advances the room.
+    pendingEvents.length = 0;
+    finishCurrent();
+  }
+
+  function reopen() {
+    if (!gate) return;
+    const panel = document.querySelector("#presentation-event");
+    panel.classList.remove("hidden");
+    if (!panel.open) panel.showModal();
+  }
+
   function complete() {
     if (gate) { clearTimeout(timer); const finish = finishEffect; finishEffect = null; finish?.(); return; }
     pendingEvents.length = 0;
@@ -129,7 +143,15 @@
     const body = document.querySelector("#effect-body");
     body.innerHTML = content;
     panel.classList.remove("hidden");
-    if (!panel.open) panel.showModal();
+    document.querySelector("#effect-waiting").textContent = "";
+    document.querySelector("#force-effect").classList.add("hidden");
+    const close = document.querySelector("#skip-effect");
+    close.textContent = "閉じる";
+    close.disabled = false;
+    close.setAttribute("data-local-control", "");
+    delete close.dataset.busyDisabled;
+    // Word reveals are local feedback; the table and next reveal remain usable.
+    if (!panel.open) panel.show();
     if (reduced.matches || document.hidden) { steps.forEach(step => step()); panel.classList.add("hidden"); panel.close(); return; }
     let index = 0;
     finishEffect = () => { while (index < steps.length) steps[index++](); };
@@ -140,7 +162,7 @@
       } else timer = setTimeout(() => {
         finishCurrent();
         if (pendingEvents.length) showEvent(pendingEvents.shift());
-      }, READ_MS);
+      }, type === "word" ? 1500 : READ_MS);
     };
     timer = setTimeout(advance, OPEN_MS);
     cue();
@@ -206,6 +228,7 @@
     }
     gate = next;
     const button = document.querySelector("#skip-effect");
+    button.removeAttribute("data-local-control");
     button.textContent = next.selfReady ? "確認済み・全員を待っています" : "確認した";
     button.disabled = next.selfReady || !next.eligible;
     delete button.dataset.busyDisabled;
@@ -314,5 +337,5 @@
     document.querySelector("#suspect-indicator").classList.add("hidden");
   }
 
-  window.CWWPresentation = { init, update, reset, results, complete };
+  window.CWWPresentation = { init, update, reset, results, complete, reopen };
 })();
