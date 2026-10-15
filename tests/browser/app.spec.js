@@ -128,3 +128,126 @@ test('new phase actions stay disabled until the previous write finishes', async 
   await page.evaluate(() => window.finishWrite());
   await expect(page.locator('#player-reveal-word')).toBeEnabled();
 });
+
+test('role help follows the private seer transition once and can be reopened', async ({ page }) => {
+  await openRoom(page);
+  await page.evaluate(() => {
+    const state = structuredClone(window.testRoom);
+    state.settings.useSeer = true;
+    state.settings.hint = '秘密の方向';
+    state.seerId = 'p1';
+    for (const player of Object.values(state.players)) player.role = window.CWWCore.ROLES.VILLAGER;
+    window.CWWCore.startRoleCheck(state);
+    window.pushRoom(state);
+  });
+  const dialog = page.locator('#rules-dialog');
+  await expect(dialog).toBeVisible();
+  await expect(page.locator('#rules-title')).toHaveText('あなたの役割：村人');
+  await expect(dialog).not.toContainText('秘密の方向');
+  await page.locator('#close-rules').click();
+  await page.evaluate(() => window.pushRoom(structuredClone(window.testRoom)));
+  await expect(dialog).not.toBeVisible();
+  await page.evaluate(() => {
+    const state = structuredClone(window.testRoom);
+    for (const player of Object.values(state.players)) window.CWWCore.confirmRole(state, player.id);
+    window.CWWCore.startWeek(state);
+    window.pushRoom(state);
+  });
+  await expect(dialog).not.toBeVisible();
+  await page.evaluate(() => {
+    const state = structuredClone(window.testRoom);
+    window.CWWCore.startWeek(state);
+    window.pushRoom(state);
+  });
+  await expect(page.locator('#rules-title')).toHaveText('あなたの役割：占い師');
+  await expect(dialog).toContainText('自分の気づきとして推理を話せます');
+  await expect(dialog).not.toContainText('秘密の方向');
+  await page.locator('#close-rules').click();
+  await page.locator('#screen-player [data-action="help"]').click();
+  await expect(dialog).toBeVisible();
+  await page.locator('#close-rules').click();
+  await page.evaluate(() => {
+    const state = structuredClone(window.testRoom);
+    state.players.p1.suspect = true;
+    window.pushRoom(state);
+  });
+  await expect(dialog).toContainText('今は容疑者です');
+  await expect(dialog).toContainText('占い師の遊び方');
+  await page.locator('#close-rules').click();
+  await page.evaluate(() => window.pushRoom(structuredClone(window.testRoom)));
+  await expect(dialog).not.toBeVisible();
+  await page.evaluate(() => {
+    const state = structuredClone(window.testRoom);
+    state.phase = window.CWWCore.PHASES.RESULT;
+    window.pushRoom(state);
+    state.players.p1.role = window.CWWCore.ROLES.VILLAGER;
+    state.players.p1.suspect = false;
+    window.CWWCore.startRoleCheck(state);
+    window.pushRoom(state);
+  });
+  await expect(dialog).toBeVisible();
+  await expect(page.locator('#rules-title')).toHaveText('あなたの役割：村人');
+});
+
+test('participating master receives wolf guidance without another players private hint', async ({ page }) => {
+  await openRoom(page, { host: true });
+  await page.evaluate(() => {
+    const state = structuredClone(window.testRoom);
+    state.players.host.role = window.CWWCore.ROLES.WOLF;
+    state.players.p1.role = window.CWWCore.ROLES.SEER;
+    state.settings.hint = '他人の秘密';
+    window.CWWCore.startRoleCheck(state);
+    window.pushRoom(state);
+  });
+  const dialog = page.locator('#rules-dialog');
+  await expect(dialog).toContainText('人狼の遊び方');
+  await expect(dialog).toContainText('マスターの進め方');
+  await expect(dialog).not.toContainText('他人の秘密');
+  await expect(dialog).not.toContainText('占い師の遊び方');
+  await expect(page.locator('#rules-title')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(dialog).not.toBeVisible();
+  await page.locator('#screen-host [data-action="help"]').click();
+  await expect(dialog).toBeVisible();
+  expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+});
+
+test('help preserves draft and dialog focus on sync, and remains closable during writes', async ({ page }) => {
+  await openRoom(page, { input: true });
+  const field = page.locator('#player-hidden-word');
+  await field.fill('ライオン');
+  const trigger = page.locator('#screen-player [data-action="help"]');
+  await trigger.click();
+  await page.locator('#close-rules').focus();
+  await page.evaluate(() => window.pushRoom(structuredClone(window.testRoom)));
+  await expect(page.locator('#close-rules')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(trigger).toBeFocused();
+  await expect(field).toHaveValue('ライオン');
+  await page.evaluate(() => {
+    window.CWWRoom.mutateRoom = () => new Promise(resolve => { window.finishHelpWrite = resolve; });
+  });
+  await page.locator('#player-submit-word').click();
+  await expect(page.locator('#player-submit-word')).toBeDisabled();
+  await trigger.click();
+  await expect(page.locator('#rules-dialog')).toBeVisible();
+  await page.locator('#close-rules').click();
+  await expect(page.locator('#rules-dialog')).not.toBeVisible();
+  await page.evaluate(() => window.finishHelpWrite());
+});
+
+test('home help is public and leaving a room clears private guidance', async ({ page }) => {
+  await openRoom(page);
+  await page.evaluate(() => {
+    const state = structuredClone(window.testRoom);
+    state.players.p1.role = window.CWWCore.ROLES.SEER;
+    window.CWWCore.startRoleCheck(state);
+    window.pushRoom(state);
+  });
+  await page.locator('#close-rules').click();
+  await page.locator('#screen-player [data-action="leave"]').click();
+  await page.locator('#screen-home [data-action="help"]').click();
+  await expect(page.locator('#rules-title')).toHaveText('ルール・遊び方');
+  await expect(page.locator('#rules-dialog')).not.toContainText('占い師の遊び方');
+  await expect(page.locator('#rules-dialog')).toContainText('ゲームの流れ');
+});

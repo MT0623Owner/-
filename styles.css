@@ -682,6 +682,67 @@ button {
   display: none !important;
 }
 
+.help-trigger {
+  margin-bottom: 16px;
+}
+
+.rules-dialog {
+  width: min(520px, calc(100% - 24px));
+  max-height: 85vh;
+  max-height: 85dvh;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--shell);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.rules-dialog::backdrop {
+  background: rgba(0, 0, 0, .7);
+}
+
+body:has(.rules-dialog[open]) {
+  overflow: hidden;
+}
+
+.rules-dialog-header {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  background: var(--shell);
+  border-bottom: 1px solid var(--line);
+}
+
+.rules-dialog-header h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.rules-dialog-header button {
+  flex-shrink: 0;
+}
+
+.rules-content {
+  padding: 0 18px 18px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.rules-content ul {
+  padding-left: 1.4em;
+}
+
+.rules-content li + li {
+  margin-top: 8px;
+}
+
 @media (max-width: 380px) {
   .app-shell {
     padding: 14px;

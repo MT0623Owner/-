@@ -41,6 +41,10 @@ const baseURL = process.env.CWW_TEST_URL || 'http://127.0.0.1:4173/';
     await host.locator('#host-discussion-seconds').selectOption('60');
     await host.screenshot({ path: 'test-results/live-host.png', fullPage: true });
     await host.locator('#host-start').click();
+    for (const page of pages) {
+      await expect(page.locator('#rules-dialog')).toBeVisible();
+      await page.locator('#close-rules').click();
+    }
     await host.locator('#host-confirm-role').click();
     for (const page of pages.slice(1)) await page.locator('#player-confirm-role').click();
     await host.locator('#begin-input').click();

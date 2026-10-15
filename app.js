@@ -11,6 +11,9 @@
   let wakeLock = null;
   let wakeLockRequesting = false;
   let subscriptionGeneration = 0;
+  let lastHelpRole = "";
+  let lastHelpSuspect = false;
+  let helpContentKey = "";
 
   const SESSION_KEY = "cww.lastSession.v1";
   const GEMINI_API_KEY = "cww.geminiApiKey.session";
@@ -51,10 +54,12 @@
     $("#resume-room-button").addEventListener("click", resumeSavedSession);
     $("#forget-room-button").addEventListener("click", forgetSavedSession);
     $("#copy-room-link").addEventListener("click", copyRoomLink);
+    $("#close-rules").addEventListener("click", () => $("#rules-dialog").close());
     document.body.addEventListener("click", event => {
       const action = event.target.closest("[data-action]")?.dataset.action;
       if (action === "leave") leaveRoom();
       if (action === "sync") recoverRoomConnection();
+      if (action === "help") openRulesHelp();
     });
   }
 
@@ -245,6 +250,10 @@
   }
 
   function leaveRoom(clearUrl = true) {
+    $("#rules-dialog").close();
+    lastHelpRole = "";
+    lastHelpSuspect = false;
+    helpContentKey = "";
     subscriptionGeneration++;
     if (unsubscribe) unsubscribe();
     unsubscribe = null;
@@ -326,8 +335,61 @@
     if (!room) return;
     if (mode === "host") renderHost();
     if (mode === "player") renderPlayer();
+    updateRulesHelp();
     renderBusyState();
     updateWakeLock();
+  }
+
+  function helpContext() {
+    const playing = room && room.phase !== Core.PHASES.LOBBY && room.phase !== Core.PHASES.RESULT;
+    const me = playing ? room.players[Room.userId] : null;
+    return {
+      role: me?.active !== false ? me?.role || "" : "",
+      suspect: Boolean(me?.active !== false && me?.suspect),
+      master: mode === "host"
+    };
+  }
+
+  function openRulesHelp() {
+    renderRulesHelp(helpContext());
+    const dialog = $("#rules-dialog");
+    if (!dialog.open) dialog.showModal();
+    dialog.scrollTop = 0;
+    $("#rules-title").focus({ preventScroll: true });
+  }
+
+  function updateRulesHelp() {
+    const context = helpContext();
+    const changedRole = context.role && context.role !== lastHelpRole;
+    const becameSuspect = context.suspect && !lastHelpSuspect;
+    // Track only this participant's visible role, never the hidden seer assignment.
+    if (!context.role && lastHelpRole) $("#rules-dialog").close();
+    lastHelpRole = context.role;
+    lastHelpSuspect = context.suspect;
+    if (changedRole || becameSuspect) openRulesHelp();
+    else if ($("#rules-dialog").open) renderRulesHelp(context);
+  }
+
+  function renderRulesHelp(context) {
+    const key = JSON.stringify(context);
+    if (key === helpContentKey) return;
+    helpContentKey = key;
+    $("#rules-title").textContent = context.role
+      ? `あなたの役割：${context.role}${context.suspect ? "・容疑者" : ""}`
+      : "ルール・遊び方";
+    const roles = {
+      [Core.ROLES.VILLAGER]: `<h3>村人の遊び方</h3><p>お題に沿うワードを自由に選び、公開されたワードの共通点から人狼の制約を推理します。通常投票で人狼を単独最多票にできれば、村人陣営の勝ちです。</p><p>占い師ありの場合、2週目に村人陣営の1人だけが占い師になります。</p>`,
+      [Core.ROLES.WOLF]: `<h3>人狼の遊び方</h3><p>自分のカードにある制約と、お題の両方に合うワードを選んでください。制約を守りながら村人に紛れ、投票で特定されないように話し合います。占い師の偽名乗りは禁止です。</p>`,
+      [Core.ROLES.SEER]: `<h3>占い師の遊び方</h3><p>あなたは村人陣営です。2週目から、自分だけが人狼の制約に関係するヒントを一つ知ります。人狼が誰かを直接知る能力ではありません。</p><ul><li>ゲーム終了まで、占い師だと名乗ったり、役職カードを見せたりしてはいけません。</li><li>ヒントをそのまま教えることも、言い換えて秘密の情報として伝えることも禁止です。</li><li>ヒントをワード選び・推理・投票に使うのは自由です。公開ワードを根拠に、自分の気づきとして推理を話せます。</li><li>人狼に似た回答で探りを入れるかどうかは自由です。容疑者になっても秘密を守ります。</li></ul><h3>発言の例（実際のヒントとは無関係です）</h3><p>例のヒントが「飼育」の場合：</p><ul><li>○ 公開されたワードを見て「ハムスターとカメ、どちらも家で飼える動物だよね」と話す。</li><li>× 「占い師です。ヒントは飼育でした」と話す。</li><li>× 「もらった情報はペット関係」と言い換えて教える。</li></ul>`
+    };
+    $("#rules-content").innerHTML = `
+      ${context.suspect ? `<section><h3>今は容疑者です</h3><p>以後のワード入力と通常投票には参加できません。生存者のワード開示後の発言・話し合いに参加し、最後は容疑者だけで最終告発します。公開ログを見ながら人狼を探してください。</p></section>` : ""}
+      ${roles[context.role] || ""}
+      ${context.master ? `<section><h3>マスターの進め方</h3><p>全員の役職確認後にゲームを開始し、画面の進行ボタンで開示・話し合い・投票を進めます。最後の週も、まず「通常投票へ」を使います。</p><p>「最終解決へ」は容疑者だけが投票する最終告発です。容疑者がいない状態で進めると、人狼陣営の勝ちになります。</p></section>` : ""}
+      <section><h3>ゲームの流れ</h3><p>役職確認 → 思考時間 → 伏せ入力 → 順番に開示 → 話し合い → 通常投票。決着しなければ次の週へ進みます。</p><ul><li>3人以上で遊べます。占い師ありは4人以上で有効です。</li><li>同じ週に同じワードが出るのはセーフです。前の週までに公開されたワードは使えません。</li><li>1週目の通常投票だけ「投票しない」を選べます。</li><li>通常投票で人狼が単独最多票なら村人陣営の勝ち。村人側が単独最多票なら、その人が容疑者になります。</li><li>通常投票の同票、またはスキップが単独最多票なら、新たな容疑者は出ません。</li></ul></section>
+      <section><h3>最終告発（最終解決）</h3><p>投票できるのは容疑者だけで、投票先は容疑者以外です。人狼を単独最多票にできれば村人陣営の勝ち。村人側を選んだ場合・同票・容疑者がいない場合は人狼陣営の勝ちです。</p><p>最終週の通常投票後、または容疑者以外が残り人狼数＋1人以下になったときは、最終告発に進みます。</p></section>
+      <section><h3>占い師の秘密・会話のルール</h3><p>全員、ゲーム終了まで占い師の名乗り・偽名乗りは禁止です。占い師は正体やヒントを秘密にし、自分の気づきとして推理を伝えます。終了後は公開して振り返れます。</p><p>話し合いは参加者同士の会話で行います。この説明を開いても、ゲームやタイマーは止まりません。</p></section>
+    `;
   }
 
   function renderHost() {
@@ -1092,7 +1154,7 @@ ${preferred ? `ユーザー指定のお題候補: ${preferred}\nこのお題候�
 
   function renderBusyState() {
     document.querySelector(".app-shell").setAttribute("aria-busy", String(busy));
-    document.querySelectorAll("button").forEach(button => {
+    document.querySelectorAll("button:not([data-local-control])").forEach(button => {
       if (busy && !button.disabled) {
         button.dataset.busyDisabled = "true";
         button.disabled = true;
