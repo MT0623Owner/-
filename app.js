@@ -18,7 +18,7 @@
 
   const SESSION_KEY = "cww.lastSession.v1";
   const GEMINI_API_KEY = "cww.geminiApiKey.session";
-  const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+  const DEFAULT_GEMINI_MODEL = Core.defaultSettings().aiModel;
   const CONNECTION_WAIT_MS = 15000;
   const $ = selector => document.querySelector(selector);
 

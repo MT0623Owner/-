@@ -2,8 +2,9 @@ const { test, expect } = require('@playwright/test');
 const Core = require('../../game-core');
 const jsQR = require('jsqr');
 
-async function openRoom(page, { host = false, input = false } = {}) {
+async function openRoom(page, { host = false, input = false, aiModel } = {}) {
   const state = Core.createRoom('TEST', 'host');
+  if (aiModel) state.settings.aiModel = aiModel;
   for (const id of ['host', 'p1', 'p2']) Core.addOrUpdatePlayer(state, id, id);
   if (input) {
     state.settings = Core.normalizeSettings({ topic: '動物', constraint: '赤い' });
@@ -572,8 +573,9 @@ for (const host of [false, true]) test(`thinking panel survives a delayed vote s
 
 const generatedTopic = { topic: '動物', constraint: '水辺や水中で暮らすことが多いもの', hint: '生息地', matchingExamples: ['ペンギン','ビーバー','カワウソ','イルカ','アザラシ','タコ'], otherExamples: ['キリン','ライオン','ラクダ','リス','シマウマ','ウマ'] };
 async function selectAI(page) {
-  await openRoom(page, { host: true });
+  await openRoom(page, { host: true, aiModel: 'gemini-2.5-flash' });
   await page.locator('#host-topic-mode').selectOption('external');
+  await expect(page.locator('#host-gemini-model')).toHaveValue('gemini-3.5-flash-lite');
   await page.locator('#host-gemini-api-key').fill('fixture-ai-key');
 }
 
