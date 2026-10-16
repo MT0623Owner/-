@@ -37,7 +37,7 @@ const output = process.env.CWW_CAPTURE_DIR || 'test-results/live-release';
   }
   async function start(seer) {
     await host.locator('#host-topic-mode').selectOption('local');
-    await host.locator('#host-topic-auto').fill('動物');
+    await host.locator('#host-topic-auto').selectOption('動物');
     await host.locator('#host-use-seer').setChecked(seer);
     await host.locator('#host-input-seconds').fill('180');
     await host.locator('#host-discussion-seconds').selectOption('0');

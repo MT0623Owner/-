@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>制約ワードウルフ</title>
   <meta name="description" content="スマホでQRコードや参加URLを開いて遊べる、制約ワードウルフ。3人以上で部屋を作り、お題・制約・投票で人狼を探そう。">
-  <link rel="stylesheet" href="./styles.css?v=1.6.2">
+  <link rel="stylesheet" href="./styles.css?v=1.7.0">
   <script src="./vendor/qrcode.js?v=2.0.4" defer></script>
-  <script src="./game-core.js?v=1.6.2" defer></script>
-  <script src="./presentation.js?v=1.6.2" defer></script>
+  <script src="./game-core.js?v=1.7.0" defer></script>
+  <script src="./presentation.js?v=1.7.0" defer></script>
   <script src="./firebase-config.js" defer></script>
-  <script type="module" src="./room-sync.js?v=1.6.2"></script>
-  <script src="./ai-topics.js?v=1.6.2" defer></script>
-  <script src="./app.js?v=1.6.2" defer></script>
+  <script type="module" src="./room-sync.js?v=1.7.0"></script>
+  <script src="./ai-topics.js?v=1.7.0" defer></script>
+  <script src="./app.js?v=1.7.0" defer></script>
 </head>
 <body>
   <main class="app-shell">
@@ -22,6 +22,7 @@
       <button id="effect-sound" class="button ghost small" data-local-control aria-pressed="false">音 OFF</button>
       <button id="effect-vibration" class="button ghost small" data-local-control aria-pressed="false">振動 OFF</button>
     </div>
+    <aside id="sync-status" class="notice hidden" role="status" aria-live="polite"></aside>
     <div id="saving-indicator" class="saving-indicator hidden" role="status">送信中…</div>
     <aside id="connection-notice" class="connection-notice hidden" role="status">
       <strong>通信の確認に時間がかかっています</strong>
@@ -36,6 +37,7 @@
       <p id="effect-network" role="status"></p>
       <button id="effect-reload" class="button secondary hidden" data-action="reload" data-local-control>通信を確認して再読み込み</button>
       <p id="effect-waiting" aria-live="polite"></p>
+      <button id="effect-add-week" class="button secondary hidden" data-action="add-week">1週追加する</button>
       <button id="force-effect" class="button secondary hidden">未確認者がいても進める</button>
       <button id="skip-effect" class="button secondary small">確認した</button>
     </dialog>
@@ -44,7 +46,7 @@
       <div class="hero">
         <div class="eyebrow-row">
           <p class="eyebrow">Master + Room Code</p>
-          <span class="version-label">バージョン 1.6.2</span>
+          <span class="version-label">バージョン 1.7.0</span>
         </div>
         <h1>制約ワードウルフ</h1>
         <p>マスター端末で部屋を作り、参加者はスマホでQRコードを読み取るか、参加URLを開いて参加します。部屋コードからも入室できます。</p>
@@ -116,6 +118,7 @@
         <div id="host-player-card" class="private-card compact hidden"></div>
         <section id="host-participant-panel" class="panel hidden"></section>
         <section id="host-phase-panel" class="panel"></section>
+        <section id="host-game-controls" class="panel hidden"></section>
         <section id="host-vote-summary" class="panel hidden"></section>
         <section class="panel log-panel">
           <h2>公開ログ</h2>

@@ -420,7 +420,7 @@ test('local automatic topics start with seer and expose only the participants ow
     window.pushRoom(state);
   });
   await page.locator('#host-topic-mode').selectOption('local');
-  await page.locator('#host-topic-auto').fill('動物');
+  await page.locator('#host-topic-auto').selectOption('動物');
   await page.locator('#host-use-seer').check();
   await page.locator('#host-start').click();
   await expect(page.locator('#rules-dialog')).toBeVisible();
@@ -632,4 +632,24 @@ test('AI retries invalid content once and does not call API when the roster is i
   expect(calls).toBe(2);
 });
 
-test('local topics offer new categories and recover from an unsupported preference',async({page})=>{await openRoom(page,{host:true});await page.locator('#host-topic-mode').selectOption('local');await expect(page.locator('#local-topic-options option')).toHaveCount(29);await page.locator('#host-topic-auto').fill('未登録カテゴリ');await page.locator('#host-start').click();await expect(page.locator('#toast')).toContainText('ローカル候補にありません');expect(await page.evaluate(()=>window.testRoom.phase)).toBe('lobby');await page.locator('#host-topic-auto').fill('料理');await page.locator('#host-start').click();await expect(page.locator('#host-phase-panel')).toContainText('役職確認');expect(await page.evaluate(()=>window.testRoom.settings.topic)).toBe('料理');});
+test('local topics offer new categories and recover from an unsupported preference',async({page})=>{await openRoom(page,{host:true});await page.locator('#host-topic-mode').selectOption('local');await expect(page.locator('#host-topic-auto option')).toHaveCount(35);await page.locator('#host-topic-auto').evaluate(el=>{el.add(new Option('未登録カテゴリ','未登録カテゴリ'));el.value='未登録カテゴリ';});await page.locator('#host-start').click();await expect(page.locator('#toast')).toContainText('ローカル候補にありません');expect(await page.evaluate(()=>window.testRoom.phase)).toBe('lobby');await page.locator('#host-topic-auto').selectOption('料理');await page.locator('#host-start').click();await expect(page.locator('#host-phase-panel')).toContainText('役職確認');expect(await page.evaluate(()=>window.testRoom.settings.topic)).toBe('料理');});
+
+test('automatic server refresh repairs missed notifications without losing the unsent input',async({page})=>{
+ await page.clock.install();await openRoom(page,{input:true});await page.locator('#player-hidden-word').fill('入力途中');
+ await page.evaluate(()=>{window.serverReads=0;window.CWWRoom.getRoom=async(_code,options)=>{if(!options?.server)throw Error('server required');window.serverReads++;const s=structuredClone(window.testRoom);s.players.p2.name='更新された名前';window.testRoom=s;return s;};});
+ await page.clock.runFor(21000);await expect(page.locator('#player-list')).toContainText('更新された名前');await expect(page.locator('#player-hidden-word')).toHaveValue('入力途中');expect(await page.evaluate(()=>window.serverReads)).toBeGreaterThan(0);
+});
+test('automatic recovery explains failure and retries without requiring a sync button',async({page})=>{
+ await page.clock.install();await openRoom(page,{host:true});await page.evaluate(()=>{window.CWWRoom.getRoom=async()=>{throw Error('offline fixture');};});await page.clock.runFor(21000);await expect(page.locator('#sync-status')).toContainText('自動で再試行');
+ await page.evaluate(()=>{window.CWWRoom.getRoom=async()=>structuredClone(window.testRoom);});await page.clock.runFor(21000);await expect(page.locator('#sync-status')).toBeHidden();
+});
+test('host extends and resets in the same room, then selects a specific easy topic',async({page})=>{
+ await openRoom(page,{host:true,input:true});await page.locator('#host-add-week').click();expect(await page.evaluate(()=>window.testRoom.settings.maxWeeks)).toBe(4);
+ page.once('dialog',dialog=>dialog.accept());await page.locator('#host-reset-topic').click();await expect(page.locator('#host-topic-mode')).toBeVisible();expect(await page.evaluate(()=>Object.keys(window.testRoom.players).length)).toBe(3);
+ await page.locator('#host-topic-mode').selectOption('local');await page.locator('#host-topic-auto').selectOption('日本料理');await page.locator('#host-constraint-difficulty').selectOption('easy');await page.locator('#host-start').click();await expect(page.locator('#host-phase-panel')).toContainText('役職確認');expect(await page.evaluate(()=>window.testRoom.settings.topic)).toBe('日本料理');expect(await page.evaluate(()=>window.testRoom.settings.constraintDifficulty)).toBe('easy');
+});
+
+test('master can extend from the pending final-vote presentation',async({page})=>{
+ await openRoom(page,{host:true,input:true});await page.evaluate(()=>{const C=window.CWWCore,s=structuredClone(window.testRoom);C.addOrUpdatePlayer(s,'p3','p3');s.players.host.role=C.ROLES.WOLF;s.week=3;C.startVote(s);for(const [i,id] of Object.keys(s.players).entries())C.castVote(s,id,i%2?'p2':'p1');C.resolveVotes(s);window.pushRoom(s);});
+ await expect(page.locator('#effect-add-week')).toBeVisible();await page.locator('#effect-add-week').click();expect(await page.evaluate(()=>window.testRoom.presentation.next.type)).toBe('nextWeek');expect(await page.evaluate(()=>window.testRoom.settings.maxWeeks)).toBe(4);
+});

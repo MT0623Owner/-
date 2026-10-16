@@ -449,6 +449,45 @@
   }
 ]);
 
+  // Difficulty describes answer accessibility, not the knowledge level of the topic.
+  const EXTRA_RULES = [
+    ["動物","脚が4本ある動物","体","羽がある動物","体","卵を産む動物","繁殖"],
+    ["食べ物","加熱して作る食べ物","調理","甘い食べ物","味","小麦粉を使う食べ物","材料"],
+    ["キャラクター","人間のキャラクター","種族","服を着ているキャラクター","外見","名前に長音記号「ー」が入るキャラクター","名前"],
+    ["場所","食べ物を買える場所","用途","人が働く場所","活動","スポーツをするための場所","目的"],
+    ["乗り物","車輪がある乗り物","構造","複数人が乗れる乗り物","人数","荷物を運ぶための乗り物","用途"],
+    ["スマホアプリ","ゲームのアプリ","用途","文章を読んだり書いたりするアプリ","機能","音声や音楽を聞けるアプリ","音"],
+    ["道具","持ち運んで使う道具","携帯","家の中で使う道具","場所","電池や電気を使う道具","動力"],
+    ["偉人","日本の歴史に登場する人物","地域","外国の歴史に登場する人物","地域","著書がある人物","作品"],
+    ["国","アジアにある国","地域","ヨーロッパにある国","地域","国旗に星が描かれた国","模様"],
+    ["世界遺産","建物が含まれる世界遺産","構造","人が造ったものを含む世界遺産","由来","山を含む世界遺産","地形"],
+    ["映画","日本で制作された映画","制作","人間が主人公の映画","人物","タイトルに数字がある映画","題名"],
+    ["ゲーム","一人で遊べるゲーム","人数","複数人で遊べるゲーム","人数","タイトルに数字があるゲーム","題名"],
+    ["ワンピースのキャラ","戦う場面があるキャラクター","行動","麦わらの一味に会ったことがあるキャラクター","交流","名前に長音記号「ー」が入るキャラクター","名前"],
+    ["ポケモン","進化するポケモン","成長","脚があるポケモン","体","名前に長音記号「ー」が入るポケモン","名前"],
+    ["ジョジョのスタンド","人型のスタンド","形","近距離で戦うスタンド","距離","名前に長音記号「ー」が入るスタンド","名前"],
+    ["ガンダムの機体","人型の機体","形","武器を持つ機体","装備","名前に長音記号「ー」が入る機体","名前"],
+    ["日本の戦国武将","合戦に参加した武将","活動","領地を持った武将","支配","名前に数字の漢字が入る武将","名前"],
+    ["スポーツ","屋外で行う競技","場所","団体戦がある競技","人数","氷や雪の上で行う競技","環境"],
+    ["家電","家事に使う家電","用途","音が出る家電","音","画面が付いている家電","構造"],
+    ["職業","人と話す仕事","交流","屋外でも働く職業","場所","専用の制服を着る職業","服装"],
+    ["飲み物","甘い種類がある飲み物","味","冷やして飲むこともある飲み物","温度","炭酸が入った飲み物","泡"],
+    ["料理","肉を使う料理","材料","野菜を使う料理","材料","汁がある料理","形"],
+    ["お菓子","甘いお菓子","味","手で持って食べられるお菓子","食べ方","豆を原料に使うお菓子","材料"],
+    ["身につけるもの","布でできているもの","素材","屋外で身につけるもの","場所","金属を使うもの","素材"],
+    ["家にあるもの","手で持てるもの","大きさ","毎日の生活で使うもの","頻度","水に触れる使い方をするもの","用途"],
+    ["楽器","手を使って演奏する楽器","奏法","持ち運べる楽器","携帯","鍵盤がある楽器","構造"],
+    ["日本の都道府県","本州にある都道府県","地域","名前が漢字3文字の都道府県（都道府県の字を含む）","文字","名前に濁音が入る都道府県","読み"],
+    ["植物","緑色の葉がある植物","外見","庭や公園で育てられる植物","場所","名前に長音記号「ー」が入る植物","名前"],
+    ["漫画","人間が主人公の漫画","人物","戦う場面がある漫画","展開","タイトルに数字がある漫画","題名"]
+  ];
+  for (const item of TOPIC_BANK) {
+    const row = EXTRA_RULES.find(row => row[0] === item.topic);
+    for (let i = 1; row && i < row.length; i += 2) item.constraints.push({ constraint: row[i], hint: row[i + 1], difficulty: i < 5 ? "easy" : "standard" });
+  }
+  TOPIC_BANK.push(...[["日本料理","米を使う料理","材料","野菜を使う料理","材料","だしを使う料理","調味"],["パン","甘いパン","味","具が入っているパン","中身","焼いた後に揚げるか、揚げて作るパン","調理"],["果物","皮をむいて食べることが多い果物","食べ方","丸い形の果物","形","中に大きな種がある果物","中身"],["野菜","加熱して食べる野菜","調理","生で食べることもある野菜","調理","地面の下で育つ部分を食べる野菜","部位"],["魚介類","魚であるもの","分類","海にすむもの","生息地","殻があるもの","体"]].map(row => ({ level: 1, topic: row[0], constraints: [1, 3, 5].map(i => ({ constraint: row[i], hint: row[i + 1], difficulty: i < 5 ? "easy" : "standard" })) })));
+  TOPIC_BANK.find(item => item.topic === "飲み物").constraints.push({ constraint: "茶葉から作る飲み物", hint: "原料", difficulty: "standard" }, { constraint: "豆を原料に使う飲み物", hint: "原料", difficulty: "standard" }, { constraint: "アルコールを含む飲み物", hint: "成分", difficulty: "standard" });
+
   const TOPICS_BY_LEVEL = new Map([1, 2, 3].map(level => [level, TOPIC_BANK.filter(item => (item.level || 1) === level)]));
   const TOPICS_BY_NAME = new Map();
   for (const item of TOPIC_BANK) {
@@ -464,6 +503,7 @@
       discussionSeconds: 0,
       maxWeeks: 3,
       topicLevel: 1,
+      constraintDifficulty: "mixed",
       hostParticipates: true,
       hostName: "マスター",
       topicMode: "manual",
@@ -497,6 +537,7 @@
       ? input.topicMode
       : Boolean(input?.autoTopic) ? "local" : settings.topicMode;
     settings.autoTopic = settings.topicMode !== "manual";
+    settings.constraintDifficulty = ["easy", "standard"].includes(settings.constraintDifficulty) ? settings.constraintDifficulty : "mixed";
     settings.aiModel = normalizeAiModel(settings.aiModel);
     settings.topic = String(settings.topic || "").trim();
     settings.constraint = String(settings.constraint || "").trim();
@@ -593,7 +634,7 @@
   function assignRoles(state, random = Math.random) {
     requirePresentationComplete(state);
     if (state.settings?.topicMode === "local" || (state.settings?.autoTopic && !state.settings?.topicMode)) {
-      state.settings = normalizeSettings({ ...state.settings, ...generateTopicSet(random, state.settings.topicLevel, state.settings.topic) });
+      state.settings = normalizeSettings({ ...state.settings, ...generateTopicSet(random, state.settings.topicLevel, state.settings.topic, state.settings.constraintDifficulty) });
     }
     const validation = validateStart(state.settings, state.players);
     if (!validation.ok) throw new Error(validation.errors.join("\n"));
@@ -721,6 +762,28 @@
     if (state.phase !== PHASES.DISCUSSION) throw new Error("話し合いの後に最終告発へ進めます。");
     if (!suspectPlayers(state).length) throw new Error("容疑者がいません。通常投票へ進んでください。");
     return startVote(state, true, now);
+  }
+
+  function canExtendWeeks(state) {
+    return ![PHASES.LOBBY, PHASES.FINAL_VOTE, PHASES.RESULT].includes(state.phase)
+      && state.settings.maxWeeks < 10
+      && (!state.presentation || !state.voteHistory.at(-1)?.final) && state.presentation?.next?.type !== "result";
+  }
+
+  function extendWeeks(state, actorId, expectedWeeks, now = Date.now()) {
+    if (actorId !== state.hostId) throw new Error("マスターだけが週を追加できます。");
+    if (state.settings.maxWeeks !== expectedWeeks) return state;
+    if (!canExtendWeeks(state)) throw new Error("今は週を追加できません。");
+    state.settings.maxWeeks++;
+    if (state.presentation?.next?.type === "finalVote" && !shouldForceFinal(state)) state.presentation.next = { type: "nextWeek" };
+    state.updatedAt = now;
+    return state;
+  }
+
+  function cancelGame(state, actorId, now = Date.now()) {
+    if (actorId !== state.hostId) throw new Error("マスターだけがお題を選び直せます。");
+    state.presentation = null;
+    return resetGame(state, now);
   }
 
   function resetGame(state, now = Date.now()) {
@@ -991,7 +1054,7 @@
     return card;
   }
 
-  function generateTopicSet(random = Math.random, level = 1, preferredTopic = "") {
+  function generateTopicSet(random = Math.random, level = 1, preferredTopic = "", difficulty = "mixed") {
     const targetLevel = Math.floor(clamp(Number(level) || 1, 1, 3));
     const preferred = String(preferredTopic || "").trim();
     const preferredKey = normalizeText(preferred);
@@ -1011,7 +1074,9 @@
 
     if (!bank.length) bank = TOPIC_BANK;
     const topicItem = bank[Math.floor(random() * bank.length)];
-    const rule = topicItem.constraints[Math.floor(random() * topicItem.constraints.length)];
+    const rules = topicItem.constraints.filter(rule => difficulty === "mixed" || (rule.difficulty || "standard") === difficulty);
+    if (!rules.length) throw new Error("このお題には指定した難度の制約がありません。");
+    const rule = rules[Math.floor(random() * rules.length)];
     return sanitizeTopicSet({
       topic: topicItem.topic,
       constraint: rule.constraint,
@@ -1080,6 +1145,9 @@
     advanceAutomatically,
     startFinalAccusation,
     resetGame,
+    cancelGame,
+    canExtendWeeks,
+    extendWeeks,
     submitHiddenWord,
     allLivingSubmitted,
     startReveal,

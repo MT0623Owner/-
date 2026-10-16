@@ -6,13 +6,14 @@ const vm = require('node:vm');
 function loadSync(initial) {
   let saved = initial;
   let writes = 0;
+  let serverReads = 0;
   const snapshot = () => ({ exists: () => saved !== undefined, data: () => structuredClone(saved) });
   const window = { CWW_FIREBASE_CONFIG: { apiKey: 'fixture', projectId: 'fixture' }, dispatchEvent() {} };
   const context = {
     window, CustomEvent: class {},
     initializeApp() {}, getAuth() {}, getFirestore() {}, doc: (...args) => args,
     onAuthStateChanged: (_auth, cb) => cb({ uid: 'host' }), signInAnonymously: async () => {},
-    getDoc: async () => snapshot(), onSnapshot() {},
+    getDoc: async () => snapshot(), getDocFromServer: async () => { serverReads++; return snapshot(); }, onSnapshot() {},
     setDoc: async (_ref, next) => { saved = next; writes++; },
     runTransaction: async (_db, operation) => operation({
       get: async () => snapshot(),
@@ -21,7 +22,7 @@ function loadSync(initial) {
   };
   const source = fs.readFileSync(require.resolve('../room-sync.js'), 'utf8').replace(/^import .*;\r?\n/gm, '');
   vm.runInNewContext(source, context);
-  return { api: window.CWWRoom, saved: () => saved, writes: () => writes };
+  return { api: window.CWWRoom, saved: () => saved, writes: () => writes, serverReads: () => serverReads };
 }
 
 test('creating an occupied code does not overwrite its players', async () => {
@@ -46,3 +47,5 @@ test('a stale phase transition does not write unchanged room data', async () => 
   await sync.api.mutateRoom('TEST', state => ({ ...state, phase: 'discussion' }));
   assert.equal(sync.writes(), 1);
 });
+
+test("recovery explicitly reads the server rather than cached room data",async()=>{const sync=loadSync({roomCode:"TEST"});await sync.api.getRoom("TEST");assert.equal(sync.serverReads(),0);await sync.api.getRoom("TEST",{server:true});assert.equal(sync.serverReads(),1);});
