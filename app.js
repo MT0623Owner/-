@@ -594,6 +594,8 @@
         </select>
       </label>
       <div id="auto-topic-fields" class="${settings.topicMode === "local" ? "" : "hidden"}">
+        <label class="check-row"><span><strong>絞ったお題もランダム候補に含める</strong></span><input id="host-include-narrow" type="checkbox" ${settings.includeNarrowTopics ? "checked" : ""}></label>
+        <p class="muted">日本料理・パン・果物・野菜・魚介類はレベル1の候補です。OFFでも下の一覧から直接選べます。外部AIには適用しません。</p>
         <label class="field-label">生成レベル
           <select id="host-topic-level" class="input">
             <option value="1" ${settings.topicLevel === 1 ? "selected" : ""}>レベル1: 普通</option>
@@ -694,6 +696,7 @@
       topicMode,
       autoTopic: topicMode !== "manual",
       constraintDifficulty: $("#host-constraint-difficulty")?.value || "mixed",
+      includeNarrowTopics: $("#host-include-narrow")?.checked ?? true,
       aiModel: $("#host-gemini-model")?.value || DEFAULT_GEMINI_MODEL,
       topicLevel: Number((topicMode === "external" ? $("#host-external-topic-level") : $("#host-topic-level"))?.value || 1),
       topic: topicMode === "external"

@@ -485,7 +485,7 @@
     const row = EXTRA_RULES.find(row => row[0] === item.topic);
     for (let i = 1; row && i < row.length; i += 2) item.constraints.push({ constraint: row[i], hint: row[i + 1], difficulty: i < 5 ? "easy" : "standard" });
   }
-  TOPIC_BANK.push(...[["日本料理","米を使う料理","材料","野菜を使う料理","材料","だしを使う料理","調味"],["パン","甘いパン","味","具が入っているパン","中身","焼いた後に揚げるか、揚げて作るパン","調理"],["果物","皮をむいて食べることが多い果物","食べ方","丸い形の果物","形","中に大きな種がある果物","中身"],["野菜","加熱して食べる野菜","調理","生で食べることもある野菜","調理","地面の下で育つ部分を食べる野菜","部位"],["魚介類","魚であるもの","分類","海にすむもの","生息地","殻があるもの","体"]].map(row => ({ level: 1, topic: row[0], constraints: [1, 3, 5].map(i => ({ constraint: row[i], hint: row[i + 1], difficulty: i < 5 ? "easy" : "standard" })) })));
+  TOPIC_BANK.push(...[["日本料理","米を使う料理","材料","野菜を使う料理","材料","だしを使う料理","調味"],["パン","甘いパン","味","具が入っているパン","中身","焼いた後に揚げるか、揚げて作るパン","調理"],["果物","皮をむいて食べることが多い果物","食べ方","丸い形の果物","形","中に大きな種がある果物","中身"],["野菜","加熱して食べる野菜","調理","生で食べることもある野菜","調理","地面の下で育つ部分を食べる野菜","部位"],["魚介類","魚であるもの","分類","海にすむもの","生息地","殻があるもの","体"]].map(row => ({ level: 1, narrow: true, topic: row[0], constraints: [1, 3, 5].map(i => ({ constraint: row[i], hint: row[i + 1], difficulty: i < 5 ? "easy" : "standard" })) })));
   TOPIC_BANK.find(item => item.topic === "飲み物").constraints.push({ constraint: "茶葉から作る飲み物", hint: "原料", difficulty: "standard" }, { constraint: "豆を原料に使う飲み物", hint: "原料", difficulty: "standard" }, { constraint: "アルコールを含む飲み物", hint: "成分", difficulty: "standard" });
 
   const TOPICS_BY_LEVEL = new Map([1, 2, 3].map(level => [level, TOPIC_BANK.filter(item => (item.level || 1) === level)]));
@@ -504,6 +504,7 @@
       maxWeeks: 3,
       topicLevel: 1,
       constraintDifficulty: "mixed",
+      includeNarrowTopics: true,
       hostParticipates: true,
       hostName: "マスター",
       topicMode: "manual",
@@ -537,6 +538,7 @@
       ? input.topicMode
       : Boolean(input?.autoTopic) ? "local" : settings.topicMode;
     settings.autoTopic = settings.topicMode !== "manual";
+    settings.includeNarrowTopics = input?.includeNarrowTopics !== false;
     settings.constraintDifficulty = ["easy", "standard"].includes(settings.constraintDifficulty) ? settings.constraintDifficulty : "mixed";
     settings.aiModel = normalizeAiModel(settings.aiModel);
     settings.topic = String(settings.topic || "").trim();
@@ -634,7 +636,7 @@
   function assignRoles(state, random = Math.random) {
     requirePresentationComplete(state);
     if (state.settings?.topicMode === "local" || (state.settings?.autoTopic && !state.settings?.topicMode)) {
-      state.settings = normalizeSettings({ ...state.settings, ...generateTopicSet(random, state.settings.topicLevel, state.settings.topic, state.settings.constraintDifficulty) });
+      state.settings = normalizeSettings({ ...state.settings, ...generateTopicSet(random, state.settings.topicLevel, state.settings.topic, state.settings.constraintDifficulty, state.settings.includeNarrowTopics) });
     }
     const validation = validateStart(state.settings, state.players);
     if (!validation.ok) throw new Error(validation.errors.join("\n"));
@@ -1054,11 +1056,12 @@
     return card;
   }
 
-  function generateTopicSet(random = Math.random, level = 1, preferredTopic = "", difficulty = "mixed") {
+  function generateTopicSet(random = Math.random, level = 1, preferredTopic = "", difficulty = "mixed", includeNarrowTopics = true) {
     const targetLevel = Math.floor(clamp(Number(level) || 1, 1, 3));
     const preferred = String(preferredTopic || "").trim();
     const preferredKey = normalizeText(preferred);
     let bank = TOPICS_BY_LEVEL.get(targetLevel);
+    if (!preferredKey && !includeNarrowTopics) bank = bank.filter(item => !item.narrow);
 
     if (preferredKey) {
       const fallbackExact = TOPICS_BY_NAME.get(preferredKey) || [];
