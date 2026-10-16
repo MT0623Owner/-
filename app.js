@@ -31,6 +31,7 @@
     bindLifecycleEvents();
     renderConfigState();
     setInterval(tick, 500);
+    setInterval(() => recoverRoomConnection({ automatic: true }), 20000);
     const query = new URLSearchParams(location.search);
     const code = query.get("room");
     if (code) $("#join-code").value = code.toUpperCase();
@@ -57,6 +58,7 @@
       if (action === "close-invite") $("#invite-dialog").close();
       if (action === "leave") leaveRoom();
       if (action === "sync") recoverRoomConnection();
+      if (action === "add-week" && mode === "host" && room) { const expected = room.settings.maxWeeks; mutate(state => Core.extendWeeks(state, Room.userId, expected)); }
       if (action === "show-effect") window.CWWPresentation.reopen();
       if (action === "reload") location.reload();
       if (action === "help") {
@@ -82,6 +84,7 @@
     });
     window.addEventListener("focus", recoverRoomConnection);
     window.addEventListener("online", recoverRoomConnection);
+    window.addEventListener("offline", () => setSyncStatus("通信が切れています。接続が戻ると自動で同期します。"));
     window.addEventListener("pageshow", recoverRoomConnection);
   }
 
@@ -276,6 +279,7 @@
     mode = "";
     roomCode = "";
     room = null;
+    setSyncStatus();
     hostDraftSettings = null;
     releaseWakeLock();
     if (clearUrl) history.replaceState(null, "", location.pathname);
@@ -283,39 +287,46 @@
     renderSavedSession();
   }
 
-  async function recoverRoomConnection() {
+  function setSyncStatus(message = "") {
+    $("#sync-status").textContent = message;
+    if (!busy) $("#effect-network").textContent = message;
+    $("#sync-status").classList.toggle("hidden", !message);
+  }
+
+  async function recoverRoomConnection({ automatic = false } = {}) {
     if (!Room?.configured || !mode || !roomCode || document.visibilityState === "hidden" || syncingRoom) return;
+    if (navigator.onLine === false) { setSyncStatus("通信が切れています。接続が戻ると自動で同期します。"); return; }
     syncingRoom = true;
     const code = roomCode;
     const generation = subscriptionGeneration;
     const updateCount = roomUpdateCount;
-    $("#effect-network").textContent = "最新の状態を確認中…";
+    if (!automatic) setSyncStatus("最新の状態を確認中…");
     try {
       const latest = await withReadTimeout(async () => {
         await Room.ready();
-        return Room.getRoom(code);
+        return Room.getRoom(code, { server: true });
       });
       if (generation !== subscriptionGeneration || code !== roomCode || !mode) return;
-      if (updateCount !== roomUpdateCount) { $("#effect-network").textContent = ""; return; }
+      setSyncStatus();
+      if (updateCount !== roomUpdateCount) return;
       if (!latest) {
         showToast("部屋が見つからなくなりました。");
         clearSavedSession();
         leaveRoom(false);
         return;
       }
-      roomUpdateCount++;
-      room = latest;
-      renderRoom();
-      $("#effect-network").textContent = "";
-      if (unsubscribe) unsubscribe();
-      unsubscribe = null;
-      subscribe(roomCode);
+      if (JSON.stringify(room) !== JSON.stringify(latest)) {
+        roomUpdateCount++;
+        room = latest;
+        renderRoom();
+      }
+      if (!automatic || !unsubscribe) subscribe(roomCode);
       updateWakeLock();
     } catch (error) {
       if (generation === subscriptionGeneration) {
         const message = `接続の復帰に失敗しました。通信状態を確認してください。${error.message ? ` (${error.message})` : ""}`;
-        showToast(message);
-        $("#effect-network").textContent = message;
+        if (!automatic) showToast(message);
+        setSyncStatus("同期が遅れています。自動で再試行します。通信状態も確認してください。");
       }
     } finally {
       syncingRoom = false;
@@ -389,6 +400,8 @@
     if (mode === "player") renderPlayer();
     if (!room.presentation) updateRulesHelp();
     window.CWWPresentation.update(presentationView());
+    $("#effect-add-week").classList.toggle("hidden", !(mode === "host" && room.presentation && Core.canExtendWeeks(room)));
+    $("#effect-add-week").textContent = `1週追加する（現在${room.settings.maxWeeks}週）`;
     renderBusyState();
     updateWakeLock();
     if (phaseChanged && shell.dataset.compare === "true" && !$("#rules-dialog").open) {
@@ -490,7 +503,22 @@
     renderHostPlayers();
     renderHostParticipant();
     renderHostPhase();
+    renderHostControls();
     renderLogs("#host-log");
+  }
+
+  function renderHostControls() {
+    const panel = $("#host-game-controls");
+    panel.classList.toggle("hidden", [Core.PHASES.LOBBY, Core.PHASES.RESULT].includes(room.phase));
+    const canExtend = Core.canExtendWeeks(room);
+    const html = `<h2>進行の調整</h2><p>現在 ${room.week} / ${room.settings.maxWeeks}週。追加は最大10週、最終告発が始まる前まで。</p><div class="button-row"><button id="host-add-week" class="button secondary" ${canExtend ? "" : "disabled"}>1週追加する</button><button id="host-reset-topic" class="button warn">お題を選び直す</button></div><p class="muted">選び直すと今回の役職・ワード・投票を取り消し、同じ参加者で設定へ戻ります。残り人数による最終告発は週を追加しても変わりません。</p>`;
+    if (!setPanelMarkup(panel, html)) return;
+    $("#host-add-week").onclick = () => { const expected = room.settings.maxWeeks; mutate(state => Core.extendWeeks(state, Room.userId, expected)); };
+    $("#host-reset-topic").onclick = () => {
+      if (!window.confirm("今回のゲームを中止して、お題を選び直しますか？参加者と部屋コードは残ります。")) return;
+      hostDraftSettings = null;
+      mutate(state => Core.cancelGame(state, Room.userId));
+    };
   }
 
   function renderHostPlayers() {
@@ -528,6 +556,7 @@
     const settings = hostDraftSettings || Core.normalizeSettings(room.settings);
     panel.innerHTML = `
       <h2>ゲーム設定</h2>
+      <label class="field-label">制約の答えやすさ（自動生成）<select id="host-constraint-difficulty" class="input"><option value="mixed" ${settings.constraintDifficulty === "mixed" ? "selected" : ""}>混ぜる</option><option value="easy" ${settings.constraintDifficulty === "easy" ? "selected" : ""}>答えやすい</option><option value="standard" ${settings.constraintDifficulty === "standard" ? "selected" : ""}>標準</option></select></label><p class="muted">お題の知識レベルとは別に、人狼が回答を思いつきやすい条件を選べます。手動入力には適用しません。</p>
       <div class="form-grid">
         <label class="field-label">人狼人数
           <input id="host-wolves" class="input" type="number" min="1" max="6" value="${settings.wolfCount}">
@@ -573,9 +602,8 @@
           </select>
         </label>
         <label class="field-label">お題指定（任意）
-          <input id="host-topic-auto" list="local-topic-options" class="input" value="${escapeHtml(settings.topic)}" placeholder="空ならお題も生成">
-          <datalist id="local-topic-options">${[...new Set(Core.TOPIC_BANK.map(item => item.topic))].map(topic => `<option value="${escapeHtml(topic)}"></option>`).join("")}</datalist>
-          <span class="muted">登録済みのお題から選択。空欄なら選んだレベルからランダムに生成します。</span>
+          <select id="host-topic-auto" class="input"><option value="">お任せ（選んだレベルから）</option>${[...new Set(Core.TOPIC_BANK.map(item => item.topic))].map(topic => `<option value="${escapeHtml(topic)}" ${settings.topic === topic ? "selected" : ""}>${escapeHtml(topic)}</option>`).join("")}</select>
+          <span class="muted">日本料理・パン・果物など、絞ったお題も選べます。お題を指定した場合は、そのお題の知識レベルを使います。</span>
         </label>
       </div>
       <div id="external-topic-fields" class="${settings.topicMode === "external" ? "" : "hidden"}">
@@ -665,6 +693,7 @@
       hostName: $("#host-name")?.value || "マスター",
       topicMode,
       autoTopic: topicMode !== "manual",
+      constraintDifficulty: $("#host-constraint-difficulty")?.value || "mixed",
       aiModel: $("#host-gemini-model")?.value || DEFAULT_GEMINI_MODEL,
       topicLevel: Number((topicMode === "external" ? $("#host-external-topic-level") : $("#host-topic-level"))?.value || 1),
       topic: topicMode === "external"
@@ -713,7 +742,7 @@
     try {
       const generated = await window.CWWAI.generate({
         apiKey, model: settings.aiModel, level: settings.topicLevel,
-        preferredTopic: settings.topic, maxWeeks: settings.maxWeeks, wolfCount: settings.wolfCount,
+        constraintDifficulty: settings.constraintDifficulty, preferredTopic: settings.topic, maxWeeks: settings.maxWeeks, wolfCount: settings.wolfCount,
         onProgress: message => { if ($("#ai-generation-status")) $("#ai-generation-status").textContent = message; }
       });
       return { settings: Core.normalizeSettings({ ...settings, ...generated.topicSet, aiModel: generated.modelUsed }), notice: "AI生成のお題で開始しました。" };

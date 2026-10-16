@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, getDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, getDocFromServer, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 const config = window.CWW_FIREBASE_CONFIG;
 const appId = window.CWW_APP_ID || "constrained-word-wolf";
@@ -59,9 +59,9 @@ if (!config || !config.apiKey || !config.projectId) {
     });
   }
 
-  async function getRoom(roomCode) {
+  async function getRoom(roomCode, { server = false } = {}) {
     await ready();
-    const snap = await getDoc(roomRef(roomCode));
+    const snap = await (server ? getDocFromServer : getDoc)(roomRef(roomCode));
     return snap.exists() ? snap.data() : null;
   }
 

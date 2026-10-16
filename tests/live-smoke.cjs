@@ -36,7 +36,7 @@ const baseURL = process.env.CWW_TEST_URL || 'http://127.0.0.1:4173/';
     }
     console.log('PASS: invitation URL joins with two separate browser identities');
     await host.locator('#host-topic-mode').selectOption('local');
-    await host.locator('#host-topic-auto').fill('動物');
+    await host.locator('#host-topic-auto').selectOption('動物');
     await host.locator('#host-input-seconds').fill('10');
     await host.locator('#host-discussion-seconds').selectOption('60');
     await host.screenshot({ path: 'test-results/live-host.png', fullPage: true });

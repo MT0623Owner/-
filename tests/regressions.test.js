@@ -134,3 +134,28 @@ function resolveVotesAndConfirm(state, ...args) {
   const gate = state.presentation;
   for (const id of gate?.required || []) Core.confirmPresentation(state, id, gate.id, args.at(-1));
 }
+
+test('host can add a week once, including a pending final transition, but cannot undo a final vote',()=>{
+ const C=require('../game-core'),s=C.createRoom('TEST','host');
+ for(const id of ['host','p1','p2','p3']) C.addOrUpdatePlayer(s,id,id);
+ s.players.host.role=C.ROLES.WOLF;s.phase=C.PHASES.PRESENTATION;s.week=3;s.settings.maxWeeks=3;
+ s.presentation={id:'gate',next:{type:'finalVote'}};
+ assert.throws(()=>C.extendWeeks(s,'p1',3),/マスター/);
+ C.extendWeeks(s,'host',3);assert.equal(s.settings.maxWeeks,4);assert.equal(s.presentation.next.type,'nextWeek');
+ C.extendWeeks(s,'host',3);assert.equal(s.settings.maxWeeks,4);
+ s.phase=C.PHASES.FINAL_VOTE;s.presentation=null;assert.throws(()=>C.extendWeeks(s,'host',4),/今は/);
+ s.phase=C.PHASES.INPUT;s.settings.maxWeeks=10;assert.throws(()=>C.extendWeeks(s,'host',10),/今は/);
+});
+test('week extension preserves population end condition and resetting clears private state but retains roster',()=>{
+ const C=require('../game-core'),s=C.createRoom('TEST','host');for(const id of ['host','p1'])C.addOrUpdatePlayer(s,id,id);
+ s.players.host.role=C.ROLES.WOLF;s.phase=C.PHASES.PRESENTATION;s.week=3;s.presentation={id:'gate',next:{type:'finalVote'}};
+ C.extendWeeks(s,'host',3);assert.equal(s.presentation.next.type,'finalVote');
+ s.settings.topicMode='local';s.logs=[{word:'秘密'}];assert.throws(()=>C.cancelGame(s,'p1'),/マスター/);
+ C.cancelGame(s,'host');assert.equal(s.phase,'lobby');assert.equal(s.settings.topic,'');assert.equal(s.presentation,null);assert.deepEqual(s.logs,[]);assert.equal(Object.keys(s.players).length,2);assert.equal(s.players.host.role,'');assert.equal(s.roomCode,'TEST');
+});
+test('every local topic supports easy and standard independently of topic level',()=>{
+ const C=require('../game-core');for(const item of C.TOPIC_BANK)for(const difficulty of ['easy','standard']){
+ const result=C.generateTopicSet(()=>0,item.level||1,item.topic,difficulty);
+ assert.ok(item.constraints.some(rule=>rule.constraint===result.constraint&&(rule.difficulty||'standard')===difficulty));
+ }assert.equal(C.normalizeSettings({constraintDifficulty:'invalid'}).constraintDifficulty,'mixed');
+});
